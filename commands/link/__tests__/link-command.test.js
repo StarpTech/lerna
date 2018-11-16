@@ -17,7 +17,19 @@ const symlinkedDirectories = testDir =>
   createSymlink.mock.calls
     .slice()
     // ensure sort is always consistent, despite promise variability
-    .sort((a, b) => (b[0] === a[0] ? b[1] < a[1] : b[0] < a[0]))
+    .sort((a, b) => {
+      // two-dimensional path sort
+      if (b[0] === a[0]) {
+        if (b[1] === a[1]) {
+          // ignore third field
+          return 0;
+        }
+
+        return b[1] < a[1] ? 1 : -1;
+      }
+
+      return b[0] < a[0] ? 1 : -1;
+    })
     .map(([src, dest, type]) => ({
       _src: normalizeRelativeDir(testDir, src),
       dest: normalizeRelativeDir(testDir, dest),
@@ -33,7 +45,45 @@ describe("LinkCommand", () => {
       const testDir = await initFixture("basic");
       await lernaLink(testDir)();
 
-      expect(symlinkedDirectories(testDir)).toMatchSnapshot();
+      expect(symlinkedDirectories(testDir)).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "_src": "packages/package-1",
+    "dest": "packages/package-2/node_modules/@test/package-1",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-1",
+    "dest": "packages/package-3/node_modules/@test/package-1",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-2",
+    "dest": "packages/package-3/node_modules/@test/package-2",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-2/cli.js",
+    "dest": "packages/package-3/node_modules/.bin/package-2",
+    "type": "exec",
+  },
+  Object {
+    "_src": "packages/package-3",
+    "dest": "packages/package-4/node_modules/package-3",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-3/cli1.js",
+    "dest": "packages/package-4/node_modules/.bin/package3cli1",
+    "type": "exec",
+  },
+  Object {
+    "_src": "packages/package-3/cli2.js",
+    "dest": "packages/package-4/node_modules/.bin/package3cli2",
+    "type": "exec",
+  },
+]
+`);
     });
   });
 
@@ -42,7 +92,50 @@ describe("LinkCommand", () => {
       const testDir = await initFixture("force-local");
       await lernaLink(testDir)();
 
-      expect(symlinkedDirectories(testDir)).toMatchSnapshot();
+      expect(symlinkedDirectories(testDir)).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "_src": "packages/package-1",
+    "dest": "packages/package-2/node_modules/@test/package-1",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-1",
+    "dest": "packages/package-3/node_modules/@test/package-1",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-1",
+    "dest": "packages/package-4/node_modules/@test/package-1",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-2",
+    "dest": "packages/package-3/node_modules/@test/package-2",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-2/cli.js",
+    "dest": "packages/package-3/node_modules/.bin/package-2",
+    "type": "exec",
+  },
+  Object {
+    "_src": "packages/package-3",
+    "dest": "packages/package-4/node_modules/package-3",
+    "type": "junction",
+  },
+  Object {
+    "_src": "packages/package-3/cli1.js",
+    "dest": "packages/package-4/node_modules/.bin/package3cli1",
+    "type": "exec",
+  },
+  Object {
+    "_src": "packages/package-3/cli2.js",
+    "dest": "packages/package-4/node_modules/.bin/package3cli2",
+    "type": "exec",
+  },
+]
+`);
     });
   });
 });

@@ -89,7 +89,9 @@ describe("PublishCommand", () => {
 
       await lernaPublish(testDir)();
 
-      expect(PromptUtilities.confirm).lastCalledWith("Are you sure you want to publish these packages?");
+      expect(PromptUtilities.confirm).toHaveBeenLastCalledWith(
+        "Are you sure you want to publish these packages?"
+      );
       expect(npmPublish.packed).toMatchInlineSnapshot(`
 Set {
   "package-1",
@@ -109,10 +111,10 @@ Set {
       expect(npmDistTag.remove).not.toBeCalled();
       expect(npmDistTag.add).not.toBeCalled();
 
-      expect(getNpmUsername).toBeCalled();
+      expect(getNpmUsername).toHaveBeenCalled();
       expect(getNpmUsername.registry.get(testDir).get("registry")).toBe("https://registry.npmjs.org/");
 
-      expect(verifyNpmPackageAccess).toBeCalled();
+      expect(verifyNpmPackageAccess).toHaveBeenCalled();
       expect(verifyNpmPackageAccess.registry.get(testDir)).toMatchInlineSnapshot(`
 Set {
   "package-1",
@@ -170,9 +172,11 @@ Set {
       await lernaPublish(testDir)("from-git");
 
       // called from chained describeRef()
-      expect(checkWorkingTree.throwIfUncommitted).toBeCalled();
+      expect(checkWorkingTree.throwIfUncommitted).toHaveBeenCalled();
 
-      expect(PromptUtilities.confirm).lastCalledWith("Are you sure you want to publish these packages?");
+      expect(PromptUtilities.confirm).toHaveBeenLastCalledWith(
+        "Are you sure you want to publish these packages?"
+      );
       expect(output.logged()).toMatch("Found 4 packages to publish:");
       expect(npmPublish.order()).toEqual([
         "package-1",
@@ -313,7 +317,7 @@ Set {
 
       await lernaPublish(testDir)("--registry", registry);
 
-      expect(npmPublish).toBeCalledWith(
+      expect(npmPublish).toHaveBeenCalledWith(
         expect.objectContaining({ name: "package-1" }),
         undefined, // dist-tag
         expect.objectContaining({ registry })
@@ -326,7 +330,7 @@ Set {
 
       await lernaPublish(testDir)("--registry", registry);
 
-      expect(npmPublish).toBeCalledWith(
+      expect(npmPublish).toHaveBeenCalledWith(
         expect.objectContaining({ name: "package-1" }),
         undefined, // dist-tag
         expect.objectContaining({ registry: "https://registry.npmjs.org/" })

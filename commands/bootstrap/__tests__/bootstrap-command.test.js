@@ -51,7 +51,19 @@ const symlinkedDirectories = testDir =>
   createSymlink.mock.calls
     .slice()
     // ensure sort is always consistent, despite promise variability
-    .sort((a, b) => (b[0] === a[0] ? b[1] < a[1] : b[0] < a[0]))
+    .sort((a, b) => {
+      // two-dimensional path sort
+      if (b[0] === a[0]) {
+        if (b[1] === a[1]) {
+          // ignore third field
+          return 0;
+        }
+
+        return b[1] < a[1] ? 1 : -1;
+      }
+
+      return b[0] < a[0] ? 1 : -1;
+    })
     .map(([src, dest, type]) => ({
       _src: normalizeRelativeDir(testDir, src),
       dest: normalizeRelativeDir(testDir, dest),
@@ -103,7 +115,7 @@ describe("BootstrapCommand", () => {
       expect(removedDirectories(testDir)).toMatchSnapshot();
 
       // root includes explicit dependencies and hoisted from leaves
-      expect(npmInstall.dependencies).toBeCalledWith(
+      expect(npmInstall.dependencies).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "basic",
         }),
@@ -118,7 +130,7 @@ describe("BootstrapCommand", () => {
       );
 
       // foo@0.1.2 differs from the more common foo@^1.0.0
-      expect(npmInstall.dependencies).lastCalledWith(
+      expect(npmInstall.dependencies).toHaveBeenLastCalledWith(
         expect.objectContaining({
           name: "package-3",
         }),
@@ -173,7 +185,7 @@ describe("BootstrapCommand", () => {
 
       await lernaBootstrap(testDir)("--ci");
 
-      expect(hasNpmVersion).lastCalledWith(">=5.7.0");
+      expect(hasNpmVersion).toHaveBeenLastCalledWith(">=5.7.0");
       expect(npmInstall.dependencies.mock.calls[0][2]).toEqual({
         subCommand: "ci",
         registry: undefined,
@@ -255,7 +267,7 @@ describe("BootstrapCommand", () => {
 
       await lernaBootstrap(testDir)();
 
-      expect(npmInstall.dependencies).toBeCalledWith(
+      expect(npmInstall.dependencies).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "@test/package-2",
         }),
@@ -424,7 +436,7 @@ describe("BootstrapCommand", () => {
       await lernaBootstrap(testDir)();
 
       expect(installedPackagesInDirectories(testDir)).toMatchSnapshot();
-      expect(npmInstall.dependencies).lastCalledWith(
+      expect(npmInstall.dependencies).toHaveBeenLastCalledWith(
         expect.objectContaining({
           name: "@test/package-1",
         }),
@@ -471,7 +483,7 @@ describe("BootstrapCommand", () => {
       await lernaBootstrap(testDir)();
 
       expect(npmInstall.dependencies).not.toBeCalled();
-      expect(npmInstall).lastCalledWith(
+      expect(npmInstall).toHaveBeenLastCalledWith(
         expect.objectContaining({ name: "root" }),
         expect.objectContaining({
           npmClient: "yarn",
@@ -502,7 +514,7 @@ describe("BootstrapCommand", () => {
       await lernaBootstrap(testDir)();
 
       expect(npmInstall.dependencies).not.toBeCalled();
-      expect(npmInstall).lastCalledWith(
+      expect(npmInstall).toHaveBeenLastCalledWith(
         expect.objectContaining({ name: "relative-file-specs" }),
         expect.objectContaining({
           npmClient: "npm",
