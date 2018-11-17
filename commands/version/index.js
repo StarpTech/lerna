@@ -105,13 +105,6 @@ class VersionCommand extends Command {
       );
     }
 
-    // Can only be used in combination with lerna publish from-package
-    // The versions are already collected by the publish command
-    if (this.options.bump === "from-package" && this.commitAndTag) {
-      this.runPackageLifecycle = createRunner(this.options);
-      return;
-    }
-
     if (
       this.commitAndTag &&
       this.pushToRemote &&
@@ -137,6 +130,13 @@ class VersionCommand extends Command {
 
       // still exits zero, aka "ok"
       return false;
+    }
+
+    // Can only be used in combination with "lerna publish from-package"
+    // The versions are already collected by the publish command
+    if (this.options.bump === "from-package" && this.commitAndTag) {
+      this.runPackageLifecycle = createRunner(this.options);
+      return;
     }
 
     this.updates = collectUpdates(
