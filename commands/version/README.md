@@ -54,6 +54,7 @@ This is useful when a previous `lerna version` was already executed and you only
 * [`--git-remote`](#--git-remote-name)
 * [`--git-tag-version`](#--git-tag-version)
 * [`--message`](#--message-msg)
+* [`--update-packages`](#--update-packages)
 * [`--preid`](#--preid)
 * [`--push`](#--push)
 * [`--sign-git-commit`](#--sign-git-commit)
@@ -238,6 +239,12 @@ This can be configured in lerna.json, as well:
   }
 }
 ```
+
+### `--update-packages`
+
+Updates the package.json of each package after the versions are determined
+
+Defaults to `true`. Pass `--update-packages false` to disable.
 
 ### `--preid`
 
