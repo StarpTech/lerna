@@ -23,7 +23,7 @@ When run, this command does the following:
 ### semver `bump`
 
 ```sh
-lerna version [major | minor | patch | premajor | preminor | prepatch | prerelease | from-package]
+lerna version [major | minor | patch | premajor | preminor | prepatch | prerelease]
 # uses the next semantic version(s) value and this skips `Select a new version for...` prompt
 ```
 
@@ -33,13 +33,6 @@ You must still use the `--yes` flag to avoid all prompts. If you use
 #### "Graduating" prereleases
 
 If you have any packages with a prerelease version number (e.g. `2.0.0-beta.3`) and you run `lerna version` with and a non-prerelease bump (`major`, `minor`, or `patch`), it will publish those previously pre-released packages _as well as_ the packages that have changed since the last release.
-
-## Positionals
-
-### bump `from-package`
-
-Similar to the `from-git` option from the `publish` command the list of versions are determined by inspecting each `package.json`
-This is useful when a previous `lerna version` was already executed and you only want to tag the new versions.
 
 ## Options
 

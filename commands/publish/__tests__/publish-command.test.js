@@ -48,16 +48,26 @@ describe("PublishCommand", () => {
       expect(verifyNpmPackageAccess).not.toBeCalled();
     });
 
-    ["from-git", "from-package"].forEach(fromArg => {
-      it(`exits early when no changes found ${fromArg}`, async () => {
-        collectUpdates.setUpdated(cwd);
+    it(`exits early when no changes found "from-package"`, async () => {
+      collectUpdates.setUpdated(cwd);
 
-        await lernaPublish(cwd)(fromArg);
+      await lernaPublish(cwd)("from-package");
 
-        const logMessages = loggingOutput("success");
-        expect(logMessages).toContain("No changed packages to publish");
-        expect(verifyNpmPackageAccess).not.toBeCalled();
-      });
+      const logMessages = loggingOutput("success");
+      expect(logMessages).toContain("No unpublished release found");
+      expect(logMessages).toContain("No changed packages to publish");
+      expect(verifyNpmPackageAccess).not.toBeCalled();
+    });
+
+    it(`exits early when no changes found "from-git"`, async () => {
+      collectUpdates.setUpdated(cwd);
+
+      await lernaPublish(cwd)("from-git");
+
+      const logMessages = loggingOutput("success");
+      expect(logMessages).toContain("No tagged release found");
+      expect(logMessages).toContain("No changed packages to publish");
+      expect(verifyNpmPackageAccess).not.toBeCalled();
     });
 
     it("exits non-zero with --scope", async () => {

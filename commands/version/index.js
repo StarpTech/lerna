@@ -105,20 +105,11 @@ class VersionCommand extends Command {
       );
     }
 
-    // we only need to tag the existing versions in the package.json
-    if (this.options.bump === "from-package") {
+    // Can only be used in combination with lerna publish from-package
+    // The versions are already collected by the publish command
+    if (this.options.bump === "from-package" && this.commitAndTag) {
       this.runPackageLifecycle = createRunner(this.options);
-
-      const tasks = [
-        () => this.getVersionsFromPackages(),
-        versions => {
-          this.updates = versions.updates;
-          this.updatesVersions = versions.updatesVersions;
-          this.packagesToVersion = this.updates.map(({ pkg }) => pkg);
-        },
-      ];
-
-      return pWaterfall(tasks);
+      return;
     }
 
     if (
@@ -267,22 +258,6 @@ class VersionCommand extends Command {
       Promise.resolve(getVersion(node)).then(version => versionMap.set(node.name, version));
 
     return pReduce(this.updates, iterator, new Map());
-  }
-
-  getVersionsFromPackages() {
-    let chain = Promise.resolve();
-
-    chain = chain.then(() => this.project.getPackages());
-    chain = chain.then(packages => packages.map(({ name }) => this.packageGraph.get(name)));
-
-    return chain.then(updates => {
-      const updatesVersions = updates.map(({ pkg }) => [pkg.name, pkg.version]);
-
-      return {
-        updates,
-        updatesVersions,
-      };
-    });
   }
 
   recommendVersions() {

@@ -29,6 +29,6 @@ test("getUnpublishedPackages", async () => {
   const cwd = await initFixture("licenses-names");
   const project = new Project(cwd);
 
-  const pkgs = await getUnpublishedPackages(project);
+  const pkgs = await getUnpublishedPackages(project, { snapshot: {} });
   expect(pkgs.map(p => p.name)).toEqual(["package-1", "package-3", "package-4", "package-5"]);
 });

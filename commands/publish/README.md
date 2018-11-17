@@ -42,8 +42,11 @@ but have the package contents themselves consistently published by an automated 
 
 Similar to the `from-git` keyword except the list of packages to publish is determined by inspecting each `package.json`
 and determining if any package version is not present in the registry. Any versions not present in the registry will
-be published.
-This is useful when a previous `lerna publish` failed to publish all packages to the registry.
+be published. For all unpublished packages new tags are created.
+This is useful in several scenarios:
+
+- When a previous `lerna publish` failed to publish all packages to the registry. In that case you have to execute `lerna publish from-package --no-git-tag-version`
+- When you want to update the versions locally but publish the tags in [Continuous integration (CI)](https://en.wikipedia.org/wiki/Continuous_integration).
 
 ## Options
 

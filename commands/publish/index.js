@@ -167,6 +167,21 @@ class PublishCommand extends Command {
       chain = chain.then(() => this.npmUpdateAsLatest());
     }
 
+    if (this.options.bump === "from-package") {
+      chain = chain.then(() => {
+        if (this.updatesVersions.size > 0) {
+          const versionCmd = versionCommand(
+            Object.assign({}, this._argv, { updatePackages: false, bump: this.options.bump })
+          );
+          versionCmd.updates = this.updates;
+          versionCmd.updatesVersions = this.updatesVersions;
+          versionCmd.packagesToVersion = this.updates.map(({ pkg }) => pkg);
+          return versionCmd;
+        }
+        this.logger.notice("from-package", "Tagging skipped");
+      });
+    }
+
     return chain.then(() => {
       const count = this.packagesToPublish.length;
       const message = this.packagesToPublish.map(pkg => ` - ${pkg.name}@${pkg.version}`);
