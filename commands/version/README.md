@@ -28,7 +28,7 @@ lerna version [major | minor | patch | premajor | preminor | prepatch | prerelea
 ```
 
 When run with this flag, `lerna version` will skip the version selection prompt and [increment](https://github.com/npm/node-semver#functions) the version by that keyword.
-You must still use the `--yes` flag to avoid all prompts. If you use 
+You must still use the `--yes` flag to avoid all prompts.
 
 #### "Graduating" prereleases
 
