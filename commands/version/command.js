@@ -84,6 +84,11 @@ exports.builder = (yargs, composed) => {
       requiresArg: true,
       defaultDescription: "v",
     },
+    "update-packages": {
+      describe: "Update all packages to the new version",
+      type: "boolean",
+      defaultDescription: "true",
+    },
     y: {
       describe: "Skip all confirmation prompts.",
       alias: "yes",
@@ -100,7 +105,7 @@ exports.builder = (yargs, composed) => {
     // set argv.composed for wrapped execution logic
     yargs.default("composed", composed).hide("composed");
   } else {
-    exports.addBumpPositional(yargs);
+    exports.addBumpPositional(yargs, ["from-package"]);
   }
 
   yargs.options(opts);

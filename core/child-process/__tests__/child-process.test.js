@@ -6,7 +6,7 @@ const ChildProcessUtilities = require("..");
 describe("ChildProcessUtilities", () => {
   describe(".execSync()", () => {
     it("should execute a command in a child process and return the result", () => {
-      expect(ChildProcessUtilities.execSync("echo", ["execSync"])).toBe("execSync");
+      expect(ChildProcessUtilities.execSync("echo", ["execSync"])).toBe('"execSync"');
     });
 
     it("does not error when stdout is ignored", () => {
@@ -19,7 +19,7 @@ describe("ChildProcessUtilities", () => {
       const { stderr, stdout } = await ChildProcessUtilities.exec("echo", ["foo"]);
 
       expect(stderr).toBe("");
-      expect(stdout).toBe("foo");
+      expect(stdout).toBe('"foo"');
     });
 
     it("rejects on undefined command", async () => {
@@ -39,8 +39,8 @@ describe("ChildProcessUtilities", () => {
       expect(ChildProcessUtilities.getChildProcessCount()).toBe(2);
 
       const [one, two] = await Promise.all([echoOne, echoTwo]);
-      expect(one.stdout).toBe("one");
-      expect(two.stdout).toBe("two");
+      expect(one.stdout).toBe('"one"');
+      expect(two.stdout).toBe('"two"');
     });
 
     it("decorates opts.pkg on error if caught", async () => {

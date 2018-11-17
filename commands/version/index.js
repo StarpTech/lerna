@@ -54,12 +54,14 @@ class VersionCommand extends Command {
       signGitCommit,
       signGitTag,
       tagVersionPrefix = "v",
+      updatePackages = true,
     } = this.options;
 
     this.gitRemote = gitRemote;
     this.tagPrefix = tagVersionPrefix;
     this.commitAndTag = gitTagVersion;
     this.pushToRemote = gitTagVersion && amend !== true && push;
+    this.updatePackages = updatePackages;
     // never automatically push to remote when amending a commit
 
     this.gitOpts = {
@@ -101,6 +103,22 @@ class VersionCommand extends Command {
           Please consider the reasons for this restriction before overriding the option.
         `
       );
+    }
+
+    // we only need to tag the existing versions in the package.json
+    if (this.options.bump === "from-package") {
+      this.runPackageLifecycle = createRunner(this.options);
+
+      const tasks = [
+        () => this.getVersionsFromPackages(),
+        versions => {
+          this.updates = versions.updates;
+          this.updatesVersions = versions.updatesVersions;
+          this.packagesToVersion = this.updates.map(({ pkg }) => pkg);
+        },
+      ];
+
+      return pWaterfall(tasks);
     }
 
     if (
@@ -164,7 +182,13 @@ class VersionCommand extends Command {
   }
 
   execute() {
-    const tasks = [() => this.updatePackageVersions()];
+    const tasks = [];
+
+    if (this.updatePackages) {
+      tasks.push(() => this.updatePackageVersions());
+    } else {
+      this.logger.info("execute", "Skipping updating package versions");
+    }
 
     if (this.commitAndTag) {
       tasks.push(() => this.commitAndTagUpdates());
@@ -243,6 +267,22 @@ class VersionCommand extends Command {
       Promise.resolve(getVersion(node)).then(version => versionMap.set(node.name, version));
 
     return pReduce(this.updates, iterator, new Map());
+  }
+
+  getVersionsFromPackages() {
+    let chain = Promise.resolve();
+
+    chain = chain.then(() => this.project.getPackages());
+    chain = chain.then(packages => packages.map(({ name }) => this.packageGraph.get(name)));
+
+    return chain.then(updates => {
+      const updatesVersions = updates.map(({ pkg }) => [pkg.name, pkg.version]);
+
+      return {
+        updates,
+        updatesVersions,
+      };
+    });
   }
 
   recommendVersions() {
@@ -472,6 +512,11 @@ class VersionCommand extends Command {
     if (this.project.isIndependent()) {
       chain = chain.then(() => this.gitCommitAndTagVersionForUpdates());
     } else {
+      // we use the exising version because in that workflow we already have bumped the versions
+      if (this.options.bump === "from-package") {
+        this.globalVersion = this.project.version;
+      }
+
       chain = chain.then(() => this.gitCommitAndTagVersion());
     }
 
@@ -495,8 +540,14 @@ class VersionCommand extends Command {
     const subject = this.options.message || "Publish";
     const message = tags.reduce((msg, tag) => `${msg}${os.EOL} - ${tag}`, `${subject}${os.EOL}`);
 
-    return Promise.resolve()
-      .then(() => gitCommit(message, this.gitOpts, this.execOpts))
+    let chain = Promise.resolve();
+
+    // we only want to tag
+    if (this.options.bump !== "from-package") {
+      chain = gitCommit(message, this.gitOpts, this.execOpts);
+    }
+
+    return chain
       .then(() => Promise.all(tags.map(tag => gitTag(tag, this.gitOpts, this.execOpts))))
       .then(() => tags);
   }
@@ -508,10 +559,14 @@ class VersionCommand extends Command {
       ? this.options.message.replace(/%s/g, tag).replace(/%v/g, version)
       : tag;
 
-    return Promise.resolve()
-      .then(() => gitCommit(message, this.gitOpts, this.execOpts))
-      .then(() => gitTag(tag, this.gitOpts, this.execOpts))
-      .then(() => [tag]);
+    let chain = Promise.resolve();
+
+    // we only want to tag
+    if (this.options.bump !== "from-package") {
+      chain = gitCommit(message, this.gitOpts, this.execOpts);
+    }
+
+    return chain.then(() => gitTag(tag, this.gitOpts, this.execOpts)).then(() => [tag]);
   }
 
   gitPushToRemote() {
