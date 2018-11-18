@@ -523,9 +523,11 @@ class VersionCommand extends Command {
 
     let chain = Promise.resolve();
 
-    // we only want to tag
+    // "from-package" workflow only needs tagging
     if (this.options.bump !== "from-package") {
       chain = gitCommit(message, this.gitOpts, this.execOpts);
+    } else {
+      this.logger.verbose("from-package", "skip commit message");
     }
 
     return chain
@@ -542,9 +544,11 @@ class VersionCommand extends Command {
 
     let chain = Promise.resolve();
 
-    // we only want to tag
+    // "from-package" workflow only needs tagging
     if (this.options.bump !== "from-package") {
       chain = gitCommit(message, this.gitOpts, this.execOpts);
+    } else {
+      this.logger.verbose("from-package", "skip commit message");
     }
 
     return chain.then(() => gitTag(tag, this.gitOpts, this.execOpts)).then(() => [tag]);
