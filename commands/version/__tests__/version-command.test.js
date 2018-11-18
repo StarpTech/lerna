@@ -200,11 +200,11 @@ describe("VersionCommand", () => {
     });
   });
 
-  describe("--from-package --update-packages false", () => {
+  describe("--from-package", () => {
     it("throw when no versions are provided", async () => {
       const testDir = await initFixture("normal");
       try {
-        await lernaVersion(testDir)("--from-package --update-packages false");
+        await lernaVersion(testDir)("--from-package");
       } catch (err) {
         expect(err.message).toBe("No versions provided");
       }
