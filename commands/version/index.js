@@ -556,8 +556,17 @@ class VersionCommand extends Command {
 
   gitPushToRemote() {
     this.logger.info("git", "Pushing tags...");
+    const pushOpts = { remote: this.gitRemote };
 
-    return gitPush(this.gitRemote, this.currentBranch, this.execOpts);
+    // push only tags to remote
+    if (this.options.bump === "from-package") {
+      pushOpts.tags = true;
+      pushOpts.followTags = false;
+    } else {
+      pushOpts.branch = this.currentBranch;
+    }
+
+    return gitPush(pushOpts, this.execOpts);
   }
 }
 

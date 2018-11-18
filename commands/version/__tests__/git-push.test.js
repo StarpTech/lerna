@@ -12,7 +12,7 @@ test("gitPush", async () => {
   await execa("git", ["tag", "foo@2.3.1", "-m", "foo@2.3.1"], { cwd });
   await execa("git", ["tag", "bar@3.2.1", "-m", "bar@3.2.1"], { cwd });
 
-  await gitPush("origin", "master", { cwd });
+  await gitPush({ remote: "origin", branch: "master" }, { cwd });
 
   const list = await execa.stdout("git", ["ls-remote", "--tags", "--refs", "--quiet"], { cwd });
   expect(list).toMatch("v1.2.3");
