@@ -200,6 +200,17 @@ describe("VersionCommand", () => {
     });
   });
 
+  describe("--from-package --update-packages false", () => {
+    it("throw when no versions are provided", async () => {
+      const testDir = await initFixture("normal");
+      try {
+        await lernaVersion(testDir)("--from-package --update-packages false");
+      } catch (err) {
+        expect(err.message).toBe("No versions provided");
+      }
+    });
+  });
+
   describe("--no-git-tag-version", () => {
     it("versions changed packages without git commit or push", async () => {
       const testDir = await initFixture("normal");

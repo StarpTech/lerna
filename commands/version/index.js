@@ -135,6 +135,9 @@ class VersionCommand extends Command {
     // Can only be used in combination with "lerna publish from-package"
     // The versions are already collected by the publish command
     if (this.options.bump === "from-package" && this.commitAndTag) {
+      if (!(this.updatesVersions && this.updates)) {
+        throw new ValidationError("No versions provided");
+      }
       this.runPackageLifecycle = createRunner(this.options);
       return;
     }
