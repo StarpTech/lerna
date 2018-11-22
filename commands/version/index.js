@@ -107,8 +107,7 @@ class VersionCommand extends Command {
 
     /* Can only be used in combination with "lerna publish from-package".
      * The versions are already collected by the publish command.
-     * Branch can be behind upstream because the command is only executed
-     * in the commit when the package.json version was updated.
+     * Branch can be behind upstream because we will only push tags to the remote.
      */
     if (this.options.bump === "from-package" && this.commitAndTag) {
       if (!(this.updatesVersions && this.updates)) {
