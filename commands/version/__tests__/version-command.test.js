@@ -63,8 +63,7 @@ describe("VersionCommand", () => {
       expect(patch).toMatchSnapshot("commit");
 
       expect(libPush).toHaveBeenLastCalledWith(
-        "origin",
-        "master",
+        { branch: "master", remote: "origin" },
         expect.objectContaining({
           cwd: testDir,
         })
@@ -157,8 +156,7 @@ describe("VersionCommand", () => {
       expect(patch).toMatchSnapshot("commit");
 
       expect(libPush).toHaveBeenLastCalledWith(
-        "origin",
-        "master",
+        { branch: "master", remote: "origin" },
         expect.objectContaining({
           cwd: testDir,
         })
@@ -391,8 +389,7 @@ describe("VersionCommand", () => {
       await lernaVersion(testDir)("--git-remote", "upstream");
 
       expect(libPush).toHaveBeenLastCalledWith(
-        "upstream",
-        "master",
+        { branch: "master", remote: "upstream" },
         expect.objectContaining({
           cwd: testDir,
         })
@@ -413,8 +410,7 @@ describe("VersionCommand", () => {
       await lernaVersion(testDir)();
 
       expect(libPush).toHaveBeenLastCalledWith(
-        "durable",
-        "master",
+        { branch: "master", remote: "durable" },
         expect.objectContaining({
           cwd: testDir,
         })
