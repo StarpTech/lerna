@@ -168,12 +168,13 @@ class PublishCommand extends Command {
     }
 
     if (this.options.bump === "from-package") {
-      // create git tags for unpunlished versions
+      // create git tags for unpublished versions
       chain = chain.then(() => {
         if (this.updatesVersions.size > 0) {
           const versionCmd = versionCommand(
             Object.assign({}, this._argv, { updatePackages: false, bump: this.options.bump })
           );
+          // pass unpublished versions to the versions command
           versionCmd.updates = this.updates;
           versionCmd.updatesVersions = this.updatesVersions;
           versionCmd.packagesToVersion = this.updates.map(({ pkg }) => pkg);
