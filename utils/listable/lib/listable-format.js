@@ -3,6 +3,7 @@
 const chalk = require("chalk");
 const columnify = require("columnify");
 const path = require("path");
+const batchPackages = require("@lerna/batch-packages");
 
 module.exports = listableFormat;
 
@@ -32,11 +33,25 @@ function parseViewOptions(options) {
     showLong: alias === "la" || alias === "ll" || options.long,
     showJSON: options.json,
     showParseable: options.parseable,
+    isTopological: options.toposort,
   };
 }
 
+function flatBatched(pkgList) {
+  // allow cycles, output needs to be usable for debugging circularity
+  const batches = batchPackages(pkgList, false, "allDependencies");
+
+  return batches.reduce((acc, batch) => acc.concat(batch), []);
+}
+
 function filterResultList(pkgList, viewOptions) {
-  return viewOptions.showAll ? pkgList.slice() : pkgList.filter(pkg => !pkg.private);
+  let result = viewOptions.showAll ? pkgList.slice() : pkgList.filter(pkg => !pkg.private);
+
+  if (viewOptions.isTopological) {
+    result = flatBatched(result);
+  }
+
+  return result;
 }
 
 function formatJSON(resultList) {

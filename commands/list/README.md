@@ -6,9 +6,9 @@
 
 The `list` subcommand is aliased to several convenient shorthands (similar to [`npm ls`](https://docs.npmjs.com/cli/ls)):
 
- * `lerna ls`: Identical to `lerna list`, which is itself analogous to the `ls` command
- * `lerna ll`: Equivalent to `lerna ls -l`, showing [long](#--long) output
- * `lerna la`: Equivalent to `lerna ls -la`, showing [all](#--all) packages (including private ones)
+- `lerna ls`: Identical to `lerna list`, which is itself analogous to the `ls` command
+- `lerna ll`: Equivalent to `lerna ls -l`, showing [long](#--long) output
+- `lerna la`: Equivalent to `lerna ls -la`, showing [all](#--all) packages (including private ones)
 
 ```sh
 $ lerna ls
@@ -24,10 +24,11 @@ In any case, you can always pass `--loglevel silent` to create pristine chains o
 
 ## Options
 
-* [`--json`](#--json)
-* [`-a`, `--all`](#--all)
-* [`-l`, `--long`](#--long)
-* [`-p`, `--parseable`](#--parseable)
+- [`--json`](#--json)
+- [`-a`, `--all`](#--all)
+- [`-l`, `--long`](#--long)
+- [`-p`, `--parseable`](#--parseable)
+- [`--toposort`](#--toposort)
 
 `lerna ls` also respects all available [Filter Flags](https://www.npmjs.com/package/@lerna/filter-options).
 
@@ -113,4 +114,19 @@ $ lerna ls -pla
 /path/to/packages/pkg-1:package-1:1.0.1
 /path/to/packages/pkg-2:package-2:1.0.2
 /path/to/packages/pkg-3:package-3:1.0.3:PRIVATE
+```
+
+### `--toposort`
+
+Sort packages in topological order (dependencies before dependents) instead of lexical by directory.
+
+```sh
+$ json dependencies <packages/pkg-1/package.json
+{
+  "pkg-2": "file:../pkg-2"
+}
+
+$ lerna ls --toposort
+package-2
+package-1
 ```

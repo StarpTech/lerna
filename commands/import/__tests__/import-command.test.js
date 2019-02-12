@@ -11,6 +11,7 @@ const pathExists = require("path-exists");
 const PromptUtilities = require("@lerna/prompt");
 
 // helpers
+const initNamedFixture = require("@lerna-test/init-named-fixture")(__dirname);
 const initFixture = require("@lerna-test/init-fixture")(__dirname);
 const gitAdd = require("@lerna-test/git-add");
 const gitCommit = require("@lerna-test/git-commit");
@@ -76,6 +77,19 @@ describe("ImportCommand", () => {
 
       expect(await lastCommitInDir(testDir)).toBe("Branch merged");
       expect(await pathExists(newFilePath)).toBe(true);
+    });
+
+    it("imports a repo into the root directory when packages are located there", async () => {
+      const [testDir, externalDir] = await Promise.all([
+        initFixture("root-packages"),
+        initNamedFixture("myapp-foo", "external", "myapp-foo init commit"),
+      ]);
+
+      await lernaImport(testDir)(externalDir);
+
+      expect(await lastCommitInDir(testDir)).toBe("myapp-foo init commit");
+      expect(await pathExists(path.join(testDir, "myapp-foo/old-file"))).toBe(true);
+      expect(await pathExists(path.join(testDir, "myapp-foo/package.json"))).toBe(true);
     });
 
     it("supports moved files within the external repo", async () => {
@@ -144,7 +158,7 @@ describe("ImportCommand", () => {
       const [testDir, externalDir] = await initBasicFixtures();
       await lernaImport(testDir)(externalDir, "--yes");
 
-      expect(PromptUtilities.confirm).not.toBeCalled();
+      expect(PromptUtilities.confirm).not.toHaveBeenCalled();
     });
 
     it("errors without an argument", async () => {
@@ -268,6 +282,35 @@ describe("ImportCommand", () => {
 
       expect(await lastCommitInDir(rootDir)).toBe("Init external commit");
       expect(await pathExists(packageJson)).toBe(true);
+    });
+  });
+
+  describe("with multi-packages Lerna dir", () => {
+    it("creates a module in specified package directory", async () => {
+      const [testDir, externalDir] = await Promise.all([
+        initFixture("multi-packages"),
+        initFixture("external", "Init external commit"),
+      ]);
+
+      const packageJson = path.join(testDir, "packages", path.basename(externalDir), "package.json");
+
+      await lernaImport(testDir)(externalDir, "--dest=packages");
+
+      expect(await lastCommitInDir(testDir)).toBe("Init external commit");
+      expect(await pathExists(packageJson)).toBe(true);
+    });
+
+    it("throws error when the package directory does not match with config", async () => {
+      const [testDir, externalDir] = await Promise.all([
+        initFixture("multi-packages"),
+        initFixture("external", "Init external commit"),
+      ]);
+
+      try {
+        await lernaImport(testDir)(externalDir, "--dest=components");
+      } catch (err) {
+        expect(err.message).toBe("--dest does not match with the package directories: core,packages");
+      }
     });
   });
 });

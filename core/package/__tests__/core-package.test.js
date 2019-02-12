@@ -1,7 +1,12 @@
 "use strict";
 
+jest.mock("load-json-file");
+jest.mock("write-pkg");
+
 const os = require("os");
 const path = require("path");
+const loadJsonFile = require("load-json-file");
+const writePkg = require("write-pkg");
 
 // file under test
 const Package = require("..");
@@ -151,6 +156,39 @@ describe("Package", () => {
     });
   });
 
+  describe(".get()", () => {
+    it("retrieves arbitrary values from manifest", () => {
+      const pkg = factory({ name: "gettable", "my-value": "foo" });
+
+      expect(pkg.get("missing")).toBe(undefined);
+      expect(pkg.get("my-value")).toBe("foo");
+    });
+  });
+
+  describe(".set()", () => {
+    it("stores arbitrary values on manifest", () => {
+      const pkg = factory({ name: "settable" });
+
+      pkg.set("foo", "bar");
+
+      expect(pkg.toJSON()).toEqual({
+        name: "settable",
+        foo: "bar",
+      });
+    });
+
+    it("is chainable", () => {
+      const pkg = factory({ name: "chainable" });
+
+      expect(
+        pkg
+          .set("foo", true)
+          .set("bar", false)
+          .get("foo")
+      ).toBe(true);
+    });
+  });
+
   describe(".toJSON()", () => {
     it("should return clone of internal package for serialization", () => {
       const json = {
@@ -166,5 +204,70 @@ describe("Package", () => {
 
       expect(implicit).toBe(explicit);
     });
+  });
+
+  describe(".refresh()", () => {
+    it("reloads private state from disk", async () => {
+      loadJsonFile.mockImplementationOnce(() => Promise.resolve({ name: "ignored", mutated: true }));
+
+      const pkg = factory({ name: "refresh" });
+      const result = await pkg.refresh();
+
+      expect(result).toBe(pkg);
+      // a package's name never changes
+      expect(pkg.name).toBe("refresh");
+      expect(pkg.get("mutated")).toBe(true);
+      expect(loadJsonFile).toHaveBeenLastCalledWith(pkg.manifestLocation);
+    });
+  });
+
+  describe(".serialize()", () => {
+    it("writes changes to disk", async () => {
+      writePkg.mockImplementation(() => Promise.resolve());
+
+      const pkg = factory({ name: "serialize-me" });
+      const result = await pkg.set("woo", "hoo").serialize();
+
+      expect(result).toBe(pkg);
+      expect(writePkg).toHaveBeenLastCalledWith(
+        pkg.manifestLocation,
+        expect.objectContaining({
+          name: "serialize-me",
+          woo: "hoo",
+        })
+      );
+    });
+  });
+});
+
+describe("Package.lazy()", () => {
+  loadJsonFile.sync.mockImplementation(() => ({ name: "bar", version: "1.0.0" }));
+
+  it("returns package instance from string directory argument", () => {
+    const pkg = Package.lazy("/foo/bar");
+
+    expect(pkg).toBeInstanceOf(Package);
+    expect(pkg.location).toBe("/foo/bar");
+  });
+
+  it("returns package instance from package.json file argument", () => {
+    const pkg = Package.lazy("/foo/bar/package.json");
+
+    expect(pkg).toBeInstanceOf(Package);
+    expect(pkg.location).toBe("/foo/bar");
+  });
+
+  it("returns package instance from json and dir arguments", () => {
+    const pkg = Package.lazy({ name: "bar", version: "1.2.3" }, "/foo/bar");
+
+    expect(pkg).toBeInstanceOf(Package);
+    expect(pkg.version).toBe("1.2.3");
+  });
+
+  it("returns existing package instance", () => {
+    const existing = new Package({ name: "existing" }, "/foo/bar", "/foo");
+    const pkg = Package.lazy(existing);
+
+    expect(pkg).toBe(existing);
   });
 });

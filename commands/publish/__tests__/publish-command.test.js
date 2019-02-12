@@ -4,20 +4,24 @@
 jest.mock("../lib/get-packages-without-license");
 jest.mock("../lib/verify-npm-package-access");
 jest.mock("../lib/get-npm-username");
+jest.mock("../lib/get-unpublished-packages");
 // FIXME: better mock for version command
 jest.mock("../../version/lib/git-push");
 jest.mock("../../version/lib/is-anything-committed");
 jest.mock("../../version/lib/is-behind-upstream");
+jest.mock("../../version/lib/remote-branch-exists");
 
 // mocked or stubbed modules
 const npmDistTag = require("@lerna/npm-dist-tag");
 const npmPublish = require("@lerna/npm-publish");
+const packDirectory = require("@lerna/pack-directory");
 const PromptUtilities = require("@lerna/prompt");
 const collectUpdates = require("@lerna/collect-updates");
 const output = require("@lerna/output");
 const checkWorkingTree = require("@lerna/check-working-tree");
 const getNpmUsername = require("../lib/get-npm-username");
 const verifyNpmPackageAccess = require("../lib/verify-npm-package-access");
+const getUnpublishedPackages = require("../lib/get-unpublished-packages");
 
 // helpers
 const loggingOutput = require("@lerna-test/logging-output");
@@ -26,6 +30,8 @@ const initFixture = require("@lerna-test/init-fixture")(__dirname);
 
 // file under test
 const lernaPublish = require("@lerna-test/command-runner")(require("../command"));
+
+expect.extend(require("@lerna-test/figgy-pudding-matchers"));
 
 describe("PublishCommand", () => {
   describe("cli validation", () => {
@@ -42,17 +48,19 @@ describe("PublishCommand", () => {
 
       const logMessages = loggingOutput("success");
       expect(logMessages).toContain("No changed packages to publish");
-      expect(verifyNpmPackageAccess).not.toBeCalled();
+      expect(verifyNpmPackageAccess).not.toHaveBeenCalled();
     });
 
-    it("exits early when no changes found from-git", async () => {
-      collectUpdates.setUpdated(cwd);
+    ["from-git", "from-package"].forEach(fromArg => {
+      it(`exits early when no changes found ${fromArg}`, async () => {
+        collectUpdates.setUpdated(cwd);
 
-      await lernaPublish(cwd)("from-git");
+        await lernaPublish(cwd)(fromArg);
 
-      const logMessages = loggingOutput("success");
-      expect(logMessages).toContain("No changed packages to publish");
-      expect(verifyNpmPackageAccess).not.toBeCalled();
+        const logMessages = loggingOutput("success");
+        expect(logMessages).toContain("No changed packages to publish");
+        expect(verifyNpmPackageAccess).not.toHaveBeenCalled();
+      });
     });
 
     it("exits non-zero with --scope", async () => {
@@ -87,12 +95,20 @@ describe("PublishCommand", () => {
       expect(PromptUtilities.confirm).toHaveBeenLastCalledWith(
         "Are you sure you want to publish these packages?"
       );
-      expect(npmPublish.packed).toMatchInlineSnapshot(`
+      expect(packDirectory.registry).toMatchInlineSnapshot(`
 Set {
   "package-1",
   "package-3",
   "package-4",
   "package-2",
+}
+`);
+      expect(npmPublish.registry).toMatchInlineSnapshot(`
+Map {
+  "package-1" => "latest",
+  "package-3" => "latest",
+  "package-4" => "latest",
+  "package-2" => "latest",
 }
 `);
       expect(npmPublish.order()).toEqual([
@@ -102,23 +118,20 @@ Set {
         "package-2",
         // package-5 is private
       ]);
-      expect(npmDistTag.check).not.toBeCalled();
-      expect(npmDistTag.remove).not.toBeCalled();
-      expect(npmDistTag.add).not.toBeCalled();
+      expect(npmDistTag.remove).not.toHaveBeenCalled();
+      expect(npmDistTag.add).not.toHaveBeenCalled();
 
       expect(getNpmUsername).toHaveBeenCalled();
-      expect(getNpmUsername.registry.get(testDir).get("registry")).toBe("https://registry.npmjs.org/");
+      expect(getNpmUsername).toHaveBeenLastCalledWith(
+        expect.figgyPudding({ registry: "https://registry.npmjs.org/" })
+      );
 
       expect(verifyNpmPackageAccess).toHaveBeenCalled();
-      expect(verifyNpmPackageAccess.registry.get(testDir)).toMatchInlineSnapshot(`
-Set {
-  "package-1",
-  "package-2",
-  "package-3",
-  "package-4",
-  "username: lerna-test",
-}
-`);
+      expect(verifyNpmPackageAccess).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        "lerna-test",
+        expect.figgyPudding({ registry: "https://registry.npmjs.org/" })
+      );
     });
 
     it("publishes changed independent packages", async () => {
@@ -218,7 +231,7 @@ Set {
 
       await lernaPublish(testDir)("from-git");
 
-      expect(npmPublish).not.toBeCalled();
+      expect(npmPublish).not.toHaveBeenCalled();
 
       const logMessages = loggingOutput("info");
       expect(logMessages).toContain("No tagged release found");
@@ -242,6 +255,69 @@ Set {
     });
   });
 
+  describe("from-package", () => {
+    it("publishes unpublished packages", async () => {
+      const testDir = await initFixture("normal");
+
+      getUnpublishedPackages.mockImplementationOnce(packageGraph => {
+        const pkgs = packageGraph.rawPackageList.slice(1, 3);
+        return pkgs.map(pkg => packageGraph.get(pkg.name));
+      });
+
+      await lernaPublish(testDir)("from-package");
+
+      expect(PromptUtilities.confirm).toHaveBeenLastCalledWith(
+        "Are you sure you want to publish these packages?"
+      );
+      expect(output.logged()).toMatch("Found 2 packages to publish:");
+      expect(npmPublish.order()).toEqual(["package-2", "package-3"]);
+    });
+
+    it("publishes unpublished independent packages", async () => {
+      const testDir = await initFixture("independent");
+
+      getUnpublishedPackages.mockImplementationOnce(packageGraph => Array.from(packageGraph.values()));
+
+      await lernaPublish(testDir)("from-package");
+
+      expect(npmPublish.order()).toEqual([
+        "package-1",
+        "package-3",
+        "package-4",
+        "package-2",
+        // package-5 is private
+      ]);
+    });
+
+    it("exits early when all packages are published", async () => {
+      const testDir = await initFixture("normal");
+
+      await lernaPublish(testDir)("from-package");
+
+      expect(npmPublish).not.toHaveBeenCalled();
+
+      const logMessages = loggingOutput("info");
+      expect(logMessages).toContain("No unpublished release found");
+    });
+
+    it("throws an error when uncommitted changes are present", async () => {
+      checkWorkingTree.throwIfUncommitted.mockImplementationOnce(() => {
+        throw new Error("uncommitted");
+      });
+
+      const testDir = await initFixture("normal");
+
+      try {
+        await lernaPublish(testDir)("from-package");
+      } catch (err) {
+        expect(err.message).toBe("uncommitted");
+        // notably different than the actual message, but good enough here
+      }
+
+      expect.assertions(1);
+    });
+  });
+
   describe("--registry", () => {
     it("passes registry to npm commands", async () => {
       const testDir = await initFixture("normal");
@@ -251,7 +327,7 @@ Set {
 
       expect(npmPublish).toHaveBeenCalledWith(
         expect.objectContaining({ name: "package-1" }),
-        undefined, // dist-tag
+        "/TEMP_DIR/package-1-MOCKED.tgz",
         expect.objectContaining({ registry })
       );
     });
@@ -264,13 +340,23 @@ Set {
 
       expect(npmPublish).toHaveBeenCalledWith(
         expect.objectContaining({ name: "package-1" }),
-        undefined, // dist-tag
+        "/TEMP_DIR/package-1-MOCKED.tgz",
         expect.objectContaining({ registry: "https://registry.npmjs.org/" })
       );
 
       const logMessages = loggingOutput("warn");
       expect(logMessages).toContain("Yarn's registry proxy is broken, replacing with public npm registry");
       expect(logMessages).toContain("If you don't have an npm token, you should exit and run `npm login`");
+    });
+
+    it("skips validation on any other third-party registry", async () => {
+      const testDir = await initFixture("normal");
+      const registry = "https://my-incompatible-registry.com";
+
+      await lernaPublish(testDir)("--registry", registry);
+
+      const logMessages = loggingOutput("notice");
+      expect(logMessages).toContain("Skipping all user and access validation due to third-party registry");
     });
   });
 
@@ -280,7 +366,7 @@ Set {
 
       await lernaPublish(cwd)("--no-verify-access");
 
-      expect(verifyNpmPackageAccess).not.toBeCalled();
+      expect(verifyNpmPackageAccess).not.toHaveBeenCalled();
     });
 
     it("is implied when npm username is undefined", async () => {
@@ -290,7 +376,23 @@ Set {
 
       await lernaPublish(cwd)("--registry", "https://my-private-registry");
 
-      expect(verifyNpmPackageAccess).not.toBeCalled();
+      expect(verifyNpmPackageAccess).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("--contents", () => {
+    it("allows you to do fancy angular crap", async () => {
+      const cwd = await initFixture("lifecycle");
+
+      await lernaPublish(cwd)("--contents", "dist");
+
+      for (const name of ["package-1", "package-2"]) {
+        expect(packDirectory).toHaveBeenCalledWith(
+          expect.objectContaining({ name }),
+          expect.stringContaining(`packages/${name}/dist`),
+          expect.any(Object)
+        );
+      }
     });
   });
 

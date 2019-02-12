@@ -15,6 +15,8 @@ access.lsPackages.mockImplementation(() =>
   })
 );
 
+expect.extend(require("@lerna-test/figgy-pudding-matchers"));
+
 describe("verifyNpmPackageAccess", () => {
   const origConsoleError = console.error;
 
@@ -34,14 +36,13 @@ describe("verifyNpmPackageAccess", () => {
 
   test("validates that all packages have read-write permission", async () => {
     const packages = await getPackages(cwd);
-    const opts = new Map([["username", "lerna-test"], ["registry", "https://registry.npmjs.org/"]]);
+    const opts = new Map().set("registry", "https://registry.npmjs.org/");
 
-    await verifyNpmPackageAccess(packages, opts);
+    await verifyNpmPackageAccess(packages, "lerna-test", opts);
 
     expect(access.lsPackages).toHaveBeenLastCalledWith(
       "lerna-test",
-      expect.objectContaining({
-        username: "lerna-test",
+      expect.figgyPudding({
         registry: "https://registry.npmjs.org/",
         "fetch-retries": 0,
       })
@@ -50,7 +51,7 @@ describe("verifyNpmPackageAccess", () => {
 
   test("allows unpublished packages to pass", async () => {
     const packages = await getPackages(cwd);
-    const opts = new Map([["username", "lerna-test"], ["registry", "https://registry.npmjs.org/"]]);
+    const opts = new Map().set("registry", "https://registry.npmjs.org/");
 
     access.lsPackages.mockImplementationOnce(() =>
       Promise.resolve({
@@ -60,21 +61,21 @@ describe("verifyNpmPackageAccess", () => {
       })
     );
 
-    await verifyNpmPackageAccess(packages, opts);
+    await verifyNpmPackageAccess(packages, "lerna-test", opts);
 
     expect(access.lsPackages).toHaveBeenCalled();
   });
 
   test("allows null result to pass with warning", async () => {
     const packages = await getPackages(cwd);
-    const opts = new Map([["username", "lerna-test"], ["registry", "https://registry.npmjs.org/"]]);
+    const opts = new Map().set("registry", "https://registry.npmjs.org/");
 
     access.lsPackages.mockImplementationOnce(() =>
       // access.lsPackages() returns null when _no_ results returned
       Promise.resolve(null)
     );
 
-    await verifyNpmPackageAccess(packages, opts);
+    await verifyNpmPackageAccess(packages, "lerna-test", opts);
 
     const [logMessage] = loggingOutput("warn");
     expect(logMessage).toBe(
@@ -84,7 +85,7 @@ describe("verifyNpmPackageAccess", () => {
 
   test("throws EACCESS when any package does not have read-write permission", async () => {
     const packages = await getPackages(cwd);
-    const opts = new Map([["username", "lerna-test"], ["registry", "https://registry.npmjs.org/"]]);
+    const opts = new Map().set("registry", "https://registry.npmjs.org/");
 
     access.lsPackages.mockImplementationOnce(() =>
       Promise.resolve({
@@ -94,11 +95,11 @@ describe("verifyNpmPackageAccess", () => {
     );
 
     try {
-      await verifyNpmPackageAccess(packages, opts);
+      await verifyNpmPackageAccess(packages, "lerna-test", opts);
     } catch (err) {
       expect(err.prefix).toBe("EACCESS");
       expect(err.message).toBe(`You do not have write permission required to publish "package-2"`);
-      expect(console.error).not.toBeCalled();
+      expect(console.error).not.toHaveBeenCalled();
     }
 
     expect.assertions(3);
@@ -107,7 +108,7 @@ describe("verifyNpmPackageAccess", () => {
   test("passes when npm Enterprise registry returns E500", async () => {
     const packages = await getPackages(cwd);
     const registry = "http://outdated-npm-enterprise.mycompany.com:12345/";
-    const opts = new Map([["username", "lerna-test"], ["registry", registry]]);
+    const opts = new Map().set("registry", registry);
 
     access.lsPackages.mockImplementationOnce(() => {
       const err = new Error("npm-enterprise-what");
@@ -115,19 +116,19 @@ describe("verifyNpmPackageAccess", () => {
       return Promise.reject(err);
     });
 
-    await verifyNpmPackageAccess(packages, opts);
+    await verifyNpmPackageAccess(packages, "lerna-test", opts);
 
     const [logMessage] = loggingOutput("warn");
     expect(logMessage).toMatch(
       `Registry "${registry}" does not support \`npm access ls-packages\`, skipping permission checks...`
     );
-    expect(console.error).not.toBeCalled();
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   test("passes when Artifactory registry returns E404", async () => {
     const packages = await getPackages(cwd);
     const registry = "https://artifactory-partial-implementation.corpnet.mycompany.com/";
-    const opts = new Map([["username", "lerna-test"], ["registry", registry]]);
+    const opts = new Map().set("registry", registry);
 
     access.lsPackages.mockImplementationOnce(() => {
       const err = new Error("artifactory-why");
@@ -135,18 +136,18 @@ describe("verifyNpmPackageAccess", () => {
       return Promise.reject(err);
     });
 
-    await verifyNpmPackageAccess(packages, opts);
+    await verifyNpmPackageAccess(packages, "lerna-test", opts);
 
     const [logMessage] = loggingOutput("warn");
     expect(logMessage).toMatch(
       `Registry "${registry}" does not support \`npm access ls-packages\`, skipping permission checks...`
     );
-    expect(console.error).not.toBeCalled();
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   test("logs unexpected failure message before throwing EWHOAMI", async () => {
     const packages = await getPackages(cwd);
-    const opts = new Map([["username", "lerna-test"]]);
+    const opts = new Map();
 
     access.lsPackages.mockImplementationOnce(() => {
       const err = new Error("gonna-need-a-bigger-boat");
@@ -155,7 +156,7 @@ describe("verifyNpmPackageAccess", () => {
     });
 
     try {
-      await verifyNpmPackageAccess(packages, opts);
+      await verifyNpmPackageAccess(packages, "lerna-test", opts);
     } catch (err) {
       expect(err.prefix).toBe("EWHOAMI");
       expect(err.message).toBe("Authentication error. Use `npm whoami` to troubleshoot.");

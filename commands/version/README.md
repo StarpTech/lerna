@@ -27,7 +27,7 @@ lerna version [major | minor | patch | premajor | preminor | prepatch | prerelea
 # uses the next semantic version(s) value and this skips `Select a new version for...` prompt
 ```
 
-When run with this flag, `lerna version` will skip the version selection prompt and [increment](https://github.com/npm/node-semver#functions) the version by that keyword.
+When this positional parameter is passed, `lerna version` will skip the version selection prompt and [increment](https://github.com/npm/node-semver#functions) the version by that keyword.
 You must still use the `--yes` flag to avoid all prompts.
 
 #### "Graduating" prereleases
@@ -36,22 +36,25 @@ If you have any packages with a prerelease version number (e.g. `2.0.0-beta.3`) 
 
 ## Options
 
-* [`--allow-branch`](#--allow-branch-glob)
-* [`--amend`](#--amend)
-* [`--commit-hooks`](#--commit-hooks)
-* [`--conventional-commits`](#--conventional-commits)
-* [`--changelog-preset`](#--changelog-preset)
-* [`--exact`](#--exact)
-* [`--force-publish`](#--force-publish)
-* [`--ignore-changes`](#--ignore-changes)
-* [`--git-remote`](#--git-remote-name)
-* [`--git-tag-version`](#--git-tag-version)
-* [`--message`](#--message-msg)
-* [`--preid`](#--preid)
-* [`--push`](#--push)
-* [`--sign-git-commit`](#--sign-git-commit)
-* [`--sign-git-tag`](#--sign-git-tag)
-* [`--yes`](#--yes)
+- [`--allow-branch`](#--allow-branch-glob)
+- [`--amend`](#--amend)
+- [`--conventional-commits`](#--conventional-commits)
+- [`--changelog-preset`](#--changelog-preset)
+- [`--exact`](#--exact)
+- [`--force-publish`](#--force-publish)
+- [`--git-remote`](#--git-remote-name)
+- [`--github-release`](#--github-release)
+- [`--ignore-changes`](#--ignore-changes)
+- [`--include-merged-tags`](#--include-merged-tags)
+- [`--message`](#--message-msg)
+- [`--no-changelog`](#--no-changelog)
+- [`--no-commit-hooks`](#--no-commit-hooks)
+- [`--no-git-tag-version`](#--no-git-tag-version)
+- [`--no-push`](#--no-push)
+- [`--preid`](#--preid)
+- [`--sign-git-commit`](#--sign-git-commit)
+- [`--sign-git-tag`](#--sign-git-tag)
+- [`--yes`](#--yes)
 
 ### `--allow-branch <glob>`
 
@@ -61,7 +64,7 @@ It is easiest (and recommended) to configure in `lerna.json`, but it is possible
 ```json
 {
   "command": {
-    "publish": {
+    "version": {
       "allowBranch": "master"
     }
   }
@@ -74,7 +77,7 @@ It is considered a best-practice to limit `lerna version` to the primary branch 
 ```json
 {
   "command": {
-    "publish": {
+    "version": {
       "allowBranch": ["master", "feature/*"]
     }
   }
@@ -103,21 +106,15 @@ This is useful during [Continuous integration (CI)](https://en.wikipedia.org/wik
 
 In order to prevent unintended overwrites, this command will skip `git push` (i.e., it implies `--no-push`).
 
-### `--commit-hooks`
-
-Run git commit hooks when committing the version changes.
-
-Defaults to `true`. Pass `--no-commit-hooks` to disable.
-
-This option is analogous to the `npm version` [option](https://docs.npmjs.com/misc/config#commit-hooks) of the same name.
-
 ### `--conventional-commits`
 
 ```sh
 lerna version --conventional-commits
 ```
 
-When run with this flag, `lerna version` will use the [Conventional Commits Specification](https://conventionalcommits.org/) to [determine the version bump](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-recommended-bump) and [generate CHANGELOG](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-cli)
+When run with this flag, `lerna version` will use the [Conventional Commits Specification](https://conventionalcommits.org/) to [determine the version bump](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-recommended-bump) and [generate CHANGELOG.md files](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-cli).
+
+Passing [`--no-changelog`](#--no-changelog) will disable the generation (or updating) of `CHANGELOG.md` files.
 
 ### `--changelog-preset`
 
@@ -155,6 +152,30 @@ When run with this flag, `lerna version` will force publish the specified packag
 
 > This will skip the `lerna changed` check for changed packages and forces a package that didn't have a `git diff` change to be updated.
 
+### `--git-remote <name>`
+
+```sh
+lerna version --git-remote upstream
+```
+
+When run with this flag, `lerna version` will push the git changes to the specified remote instead of `origin`.
+
+### `--github-release`
+
+```sh
+lerna version --github-release --conventional-commits
+```
+
+When run with this flag, `lerna version` will create an official GitHub release based on the changed packages. Requires `--conventional-commits` to be passed so that changelogs can be generated.
+
+To authenticate with GitHub, the following environment variables can be defined.
+
+- `GH_TOKEN` (required) - Your GitHub authentication token (under Settings > Developer settings > Personal access tokens).
+- `GHE_API_URL` - When using GitHub Enterprise, an absolute URL to the API.
+- `GHE_VERSION` - When using GitHub Enterprise, the currently installed GHE version. [Supports the following versions](https://github.com/octokit/plugin-enterprise-rest.js).
+
+> NOTE: When using this option, you cannot pass [`--no-changelog`](#--no-changelog).
+
 ### `--ignore-changes`
 
 Ignore changes in files matched by glob(s) when detecting changed packages.
@@ -167,31 +188,24 @@ This option is best specified as root `lerna.json` configuration, both to avoid 
 
 ```json
 {
-  "ignoreChanges": [
-    "**/__fixtures__/**",
-    "**/__tests__/**",
-    "**/*.md"
-  ]
+  "ignoreChanges": ["**/__fixtures__/**", "**/__tests__/**", "**/*.md"]
 }
 ```
 
 Pass `--no-ignore-changes` to disable any existing durable configuration.
 
-### `--git-remote <name>`
+> In the following cases, a package will always be published, regardless of this option:
+>
+> 1. The latest release of the package is a `prerelease` version (i.e. `1.0.0-alpha`, `1.0.0–0.3.7`, etc.).
+> 2. One or more linked dependencies of the package have changed.
+
+### `--include-merged-tags`
 
 ```sh
-lerna version --git-remote upstream
+lerna version --include-merged-tags
 ```
 
-When run with this flag, `lerna version` will push the git changes to the specified remote instead of `origin`.
-
-### `--git-tag-version`
-
-Commit and tag versioned changes.
-
-Defaults to `true`. Pass `--no-git-tag-version` to disable.
-
-This option is analogous to the `npm version` [option](https://docs.npmjs.com/misc/config#git-tag-version) of the same name.
+When run with this flag, `lerna version` will also consider tags of merged branches during package change detection.
 
 ### `--message <msg>`
 
@@ -218,19 +232,48 @@ to certain guidelines, such as projects which use [commitizen](https://github.co
 
 If the message contains `%s`, it will be replaced with the new global version version number prefixed with a "v".
 If the message contains `%v`, it will be replaced with the new global version version number without the leading "v".
-Note that this only applies when using the default "fixed" versioning mode, as there is no "global" version when versioning independently.
+Note that this placeholder interpolation only applies when using the default "fixed" versioning mode, as there is no "global" version to interpolate when versioning independently.
 
 This can be configured in lerna.json, as well:
 
 ```json
 {
   "command": {
-    "publish": {
+    "version": {
       "message": "chore(release): publish %s"
     }
   }
 }
 ```
+
+### `--no-changelog`
+
+```sh
+lerna version --conventional-commits --no-changelog
+```
+
+When using `conventional-commits`, do not generate any `CHANGELOG.md` files.
+
+> NOTE: When using this option, you cannot pass [`--github-release`](#--github-release).
+
+### `--no-commit-hooks`
+
+By default, `lerna version` will allow git commit hooks to run when committing version changes.
+Pass `--no-commit-hooks` to disable this behavior.
+
+This option is analogous to the `npm version` option [`--commit-hooks`](https://docs.npmjs.com/misc/config#commit-hooks), just inverted.
+
+### `--no-git-tag-version`
+
+By default, `lerna version` will commit changes to package.json files and tag the release.
+Pass `--no-git-tag-version` to disable the behavior.
+
+This option is analogous to the `npm version` option [`--git-tag-version`](https://docs.npmjs.com/misc/config#git-tag-version), just inverted.
+
+### `--no-push`
+
+By default, `lerna version` will push the committed and tagged changes to the configured [git remote](#--git-remote-name).
+Pass `--no-push` to disable this behavior.
 
 ### `--preid`
 
@@ -246,10 +289,6 @@ lerna version prepatch --preid next
 
 When run with this flag, `lerna version` will increment `premajor`, `preminor`, `prepatch`, or `prerelease` semver
 bumps using the specified [prerelease identifier](http://semver.org/#spec-item-9).
-
-### `--push`
-
-Push the committed and tagged changes to the configured [git remote](https://github.com/lerna/lerna/tree/master/commands/version#--git-remote)
 
 ### `--sign-git-commit`
 
@@ -281,6 +320,29 @@ Pass an explicit version number to the [`bump`](#bump) positional instead.
 
 ### `--skip-git`
 
-Use [`--no-git-tag-version`](https://github.com/lerna/lerna/tree/master/commands/version#--git-tag-version) and [`--no-push`](https://github.com/lerna/lerna/tree/master/commands/version#--push) instead.
+Use [`--no-git-tag-version`](#--no-git-tag-version) and [`--no-push`](#--no-push) instead.
 
 > NOTE: This option **does not** restrict _all_ git commands from being executed. `git` is still required by `lerna version`.
+
+## Tips
+
+### Generating Initial Changelogs
+
+If you start using the [`--conventional-commits`](#--conventional-commits) option _after_ the monorepo has been active for awhile, you can still generate changelogs for previous releases using [`conventional-changelog-cli`](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-cli#readme) and [`lerna exec`](https://github.com/lerna/lerna/tree/master/commands/exec#readme):
+
+```bash
+# Lerna does not actually use conventional-changelog-cli, so you need to install it temporarily
+npm i -D conventional-changelog-cli
+# Documentation: `npx conventional-changelog --help`
+
+# fixed versioning (default)
+# run in root, then leaves
+npx conventional-changelog --preset angular --release-count 0 --outfile ./CHANGELOG.md --verbose
+npx lerna exec --concurrency 1 --stream -- 'conventional-changelog --preset angular --release-count 0 --commit-path $PWD --pkg $PWD/package.json --outfile $PWD/CHANGELOG.md --verbose'
+
+# independent versioning
+# (no root changelog)
+npx lerna exec --concurrency 1 --stream -- 'conventional-changelog --preset angular --release-count 0 --commit-path $PWD --pkg $PWD/package.json --outfile $PWD/CHANGELOG.md --verbose --lerna-package $LERNA_PACKAGE_NAME'
+```
+
+If you use a custom [`--changelog-preset`](#--changelog-preset), you should change `--preset` value accordingly in the example above.

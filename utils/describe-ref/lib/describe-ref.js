@@ -7,8 +7,8 @@ module.exports = describeRef;
 module.exports.parse = parse;
 module.exports.sync = sync;
 
-function getArgs(options) {
-  const args = [
+function getArgs(options, includeMergedTags) {
+  let args = [
     "describe",
     // fallback to short sha if no tags located
     "--always",
@@ -24,11 +24,16 @@ function getArgs(options) {
     args.push("--match", options.match);
   }
 
+  if (includeMergedTags) {
+    // we want to consider all tags, also from merged branches
+    args = args.filter(arg => arg !== "--first-parent");
+  }
+
   return args;
 }
 
-function describeRef(options = {}) {
-  const promise = childProcess.exec("git", getArgs(options), options);
+function describeRef(options = {}, includeMergedTags) {
+  const promise = childProcess.exec("git", getArgs(options, includeMergedTags), options);
 
   return promise.then(({ stdout }) => {
     const result = parse(stdout, options);
@@ -40,8 +45,8 @@ function describeRef(options = {}) {
   });
 }
 
-function sync(options = {}) {
-  const stdout = childProcess.execSync("git", getArgs(options), options);
+function sync(options = {}, includeMergedTags) {
+  const stdout = childProcess.execSync("git", getArgs(options, includeMergedTags), options);
   const result = parse(stdout, options);
 
   // only called by collect-updates with no matcher
@@ -51,10 +56,11 @@ function sync(options = {}) {
 }
 
 function parse(stdout, options = {}) {
+  const minimalShaRegex = /^([0-9a-f]{7,40})(-dirty)?$/;
   // when git describe fails to locate tags, it returns only the minimal sha
-  if (/^[0-9a-f]{7,40}/.test(stdout)) {
+  if (minimalShaRegex.test(stdout)) {
     // repo might still be dirty
-    const [, sha, isDirty] = /^([0-9a-f]{7,40})(-dirty)?/.exec(stdout);
+    const [, sha, isDirty] = minimalShaRegex.exec(stdout);
 
     // count number of commits since beginning of time
     const refCount = childProcess.execSync("git", ["rev-list", "--count", sha], options);

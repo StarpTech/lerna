@@ -4,6 +4,7 @@
 jest.mock("../lib/git-push");
 jest.mock("../lib/is-anything-committed");
 jest.mock("../lib/is-behind-upstream");
+jest.mock("../lib/remote-branch-exists");
 
 const path = require("path");
 const semver = require("semver");
@@ -31,7 +32,7 @@ describe("--conventional-commits", () => {
     ]);
 
     beforeEach(() => {
-      ConventionalCommitUtilities.mockBumps(...versionBumps.values());
+      versionBumps.forEach(bump => ConventionalCommitUtilities.recommendVersion.mockResolvedValueOnce(bump));
     });
 
     it("should use conventional-commits utility to guess version bump and generate CHANGELOG", async () => {
@@ -73,11 +74,23 @@ describe("--conventional-commits", () => {
         changelogOpts
       );
     });
+
+    it("should not update changelogs with --no-changelog option", async () => {
+      const cwd = await initFixture("independent");
+      await lernaVersion(cwd)("--conventional-commits", "--no-changelog");
+
+      expect(ConventionalCommitUtilities.updateChangelog).not.toHaveBeenCalled();
+    });
   });
 
   describe("fixed mode", () => {
     beforeEach(() => {
-      ConventionalCommitUtilities.mockBumps("1.0.1", "1.1.0", "2.0.0", "1.1.0", "1.0.0");
+      ConventionalCommitUtilities.recommendVersion
+        .mockResolvedValueOnce("1.0.1")
+        .mockResolvedValueOnce("1.1.0")
+        .mockResolvedValueOnce("2.0.0")
+        .mockResolvedValueOnce("1.1.0")
+        .mockResolvedValueOnce("1.0.0");
     });
 
     it("should use conventional-commits utility to guess version bump and generate CHANGELOG", async () => {
@@ -141,10 +154,17 @@ describe("--conventional-commits", () => {
         changelogOpts
       );
     });
+
+    it("should not update changelogs with --no-changelog option", async () => {
+      const cwd = await initFixture("normal");
+      await lernaVersion(cwd)("--conventional-commits", "--no-changelog");
+
+      expect(ConventionalCommitUtilities.updateChangelog).not.toHaveBeenCalled();
+    });
   });
 
   it("avoids duplicating previously-released version", async () => {
-    const cwd = await initFixture("normal-no-inter-dependencies");
+    const cwd = await initFixture("no-interdependencies");
 
     collectUpdates.setUpdated(cwd, "package-1");
     ConventionalCommitUtilities.recommendVersion.mockResolvedValueOnce("1.1.0");

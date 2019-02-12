@@ -41,6 +41,10 @@ function npmInstall(
   // potential override, e.g. "inherit" in root-only bootstrap
   opts.stdio = stdio;
 
+  // provide env sentinels to avoid recursive execution from scripts
+  opts.env.LERNA_EXEC_PATH = pkg.location;
+  opts.env.LERNA_ROOT_PATH = pkg.rootPath;
+
   log.silly("npmInstall", [cmd, args]);
   return ChildProcessUtilities.exec(cmd, args, opts);
 }
@@ -123,6 +127,20 @@ function transformManifest(pkg, dependencies) {
           delete collection[depName];
         }
       });
+    }
+  });
+
+  ["bundledDependencies", "bundleDependencies"].forEach(depType => {
+    const collection = json[depType];
+    if (collection) {
+      const newCollection = [];
+      for (const depName of collection) {
+        if (depMap.has(depName)) {
+          newCollection.push(depName);
+          depMap.delete(depName);
+        }
+      }
+      json[depType] = newCollection;
     }
   });
 

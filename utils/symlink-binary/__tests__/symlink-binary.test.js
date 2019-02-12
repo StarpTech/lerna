@@ -1,42 +1,35 @@
 "use strict";
 
 const path = require("path");
-const readPkg = require("read-pkg");
-
 const Package = require("@lerna/package");
 
 // helpers
 const initFixture = require("@lerna-test/init-fixture")(__dirname);
-const pkgMatchers = require("@lerna-test/pkg-matchers");
 
 // file under test
 const symlinkBinary = require("..");
 
-expect.extend(pkgMatchers);
+expect.extend(require("@lerna-test/pkg-matchers"));
 
 describe("symlink-binary", () => {
-  it("should work with references", async () => {
+  it("should work with path references", async () => {
     const testDir = await initFixture("links");
     const srcPath = path.join(testDir, "packages/package-2");
     const dstPath = path.join(testDir, "packages/package-3");
 
     await symlinkBinary(srcPath, dstPath);
 
-    expect(dstPath).toHaveBinaryLink("links-2");
+    expect(dstPath).toHaveBinaryLinks("links-2");
   });
 
-  it("should work with packages", async () => {
+  it("should work with Package instances", async () => {
     const testDir = await initFixture("links");
     const srcPath = path.join(testDir, "packages/package-2");
     const dstPath = path.join(testDir, "packages/package-3");
-    const [srcJson, dstJson] = await Promise.all([
-      readPkg(srcPath, { normalize: false }),
-      readPkg(dstPath, { normalize: false }),
-    ]);
 
-    await symlinkBinary(new Package(srcJson, srcPath), new Package(dstJson, dstPath));
+    await symlinkBinary(Package.lazy(srcPath), Package.lazy(dstPath));
 
-    expect(dstPath).toHaveBinaryLink("links-2");
+    expect(dstPath).toHaveBinaryLinks("links-2");
   });
 
   it("should skip missing bin config", async () => {
@@ -46,7 +39,7 @@ describe("symlink-binary", () => {
 
     await symlinkBinary(srcPath, dstPath);
 
-    expect(dstPath).toHaveBinaryLink([]);
+    expect(dstPath).not.toHaveBinaryLinks();
   });
 
   it("should skip missing bin files", async () => {
@@ -56,8 +49,8 @@ describe("symlink-binary", () => {
 
     await symlinkBinary(srcPath, dstPath);
 
-    expect(srcPath).toHaveExecutable(["cli1.js", "cli2.js"]);
-    expect(dstPath).toHaveBinaryLink(["links3cli1", "links3cli2"]);
+    expect(srcPath).toHaveExecutables("cli1.js", "cli2.js");
+    expect(dstPath).toHaveBinaryLinks("links3cli1", "links3cli2");
   });
 
   it("should preserve previous bin entries", async () => {
@@ -69,6 +62,6 @@ describe("symlink-binary", () => {
     await symlinkBinary(pkg2Path, destPath);
     await symlinkBinary(pkg3Path, destPath);
 
-    expect(destPath).toHaveBinaryLink(["links-2", "links3cli1", "links3cli2"]);
+    expect(destPath).toHaveBinaryLinks("links-2", "links3cli1", "links3cli2");
   });
 });

@@ -3,6 +3,277 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.11.1](https://github.com/lerna/lerna/compare/v3.11.0...v3.11.1) (2019-02-11)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+# [3.11.0](https://github.com/lerna/lerna/compare/v3.10.8...v3.11.0) (2019-02-08)
+
+
+### Bug Fixes
+
+* **deps:** Explicit libnpmaccess ^3.0.1 ([6ba3d1d](https://github.com/lerna/lerna/commit/6ba3d1d))
+* **deps:** Explicit libnpmpublish ^1.1.1 ([a506d96](https://github.com/lerna/lerna/commit/a506d96))
+* **deps:** Explicit npm-package-arg ^6.1.0 ([4b20791](https://github.com/lerna/lerna/commit/4b20791))
+* **deps:** Explicit npm-registry-fetch ^3.9.0 ([a83c487](https://github.com/lerna/lerna/commit/a83c487))
+* **deps:** Explicit npmlog ^4.1.2 ([571c2e2](https://github.com/lerna/lerna/commit/571c2e2))
+* **deps:** Explicit pacote ^9.4.1 ([44d05bf](https://github.com/lerna/lerna/commit/44d05bf))
+* **deps:** Remove unused libnpm (replaced by direct sub-packages) ([1caeb28](https://github.com/lerna/lerna/commit/1caeb28))
+* **publish:** Correct silly log heading ([f1dc3fc](https://github.com/lerna/lerna/commit/f1dc3fc))
+
+
+
+
+
+## [3.10.8](https://github.com/lerna/lerna/compare/v3.10.7...v3.10.8) (2019-02-01)
+
+
+### Bug Fixes
+
+* **publish:** Skip private package lookup ([#1905](https://github.com/lerna/lerna/issues/1905)) ([f9e18fa](https://github.com/lerna/lerna/commit/f9e18fa))
+
+
+
+
+
+## [3.10.7](https://github.com/lerna/lerna/compare/v3.10.6...v3.10.7) (2019-01-22)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+## [3.10.6](https://github.com/lerna/lerna/compare/v3.10.5...v3.10.6) (2019-01-19)
+
+
+### Bug Fixes
+
+* **options:** Document negated boolean options explicitly ([8bc9669](https://github.com/lerna/lerna/commit/8bc9669))
+* **publish:** Map packument requests concurrently directly from package graph ([c79a827](https://github.com/lerna/lerna/commit/c79a827))
+
+
+
+
+
+## [3.10.5](https://github.com/lerna/lerna/compare/v3.10.4...v3.10.5) (2019-01-11)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+## [3.10.3](https://github.com/lerna/lerna/compare/v3.10.2...v3.10.3) (2019-01-10)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+## [3.10.1](https://github.com/lerna/lerna/compare/v3.10.0...v3.10.1) (2019-01-09)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+# [3.10.0](https://github.com/lerna/lerna/compare/v3.9.1...v3.10.0) (2019-01-08)
+
+
+### Bug Fixes
+
+* **publish:** Correctly determine canary version when `--include-merged-tags` present ([fb2a1b2](https://github.com/lerna/lerna/commit/fb2a1b2)), closes [#1820](https://github.com/lerna/lerna/issues/1820)
+
+
+
+
+
+# [3.9.0](https://github.com/lerna/lerna/compare/v3.8.5...v3.9.0) (2019-01-08)
+
+**Note:** Version bump only for package @lerna/publish
+
+
+
+
+
+## [3.8.5](https://github.com/lerna/lerna/compare/v3.8.4...v3.8.5) (2019-01-05)
+
+
+### Bug Fixes
+
+* **publish:** Deprecate `--npm-tag`, replaced by `--dist-tag` ([196d663](https://github.com/lerna/lerna/commit/196d663))
+* **publish:** Ensure pkg.publishConfig is handled correctly when promoting dist-tags ([af1c2ad](https://github.com/lerna/lerna/commit/af1c2ad))
+* **publish:** Tweak progress logging ([5a04145](https://github.com/lerna/lerna/commit/5a04145))
+
+
+
+
+
+## [3.8.4](https://github.com/lerna/lerna/compare/v3.8.3...v3.8.4) (2019-01-03)
+
+
+### Bug Fixes
+
+* **publish:** Pass username to access.lsPackages() ([31982a1](https://github.com/lerna/lerna/commit/31982a1))
+
+
+
+
+
+## [3.8.3](https://github.com/lerna/lerna/compare/v3.8.2...v3.8.3) (2019-01-03)
+
+
+### Bug Fixes
+
+* **publish:** Give up trying to validate third-party registries ([b44f2f9](https://github.com/lerna/lerna/commit/b44f2f9)), closes [#1685](https://github.com/lerna/lerna/issues/1685) [#1687](https://github.com/lerna/lerna/issues/1687)
+
+
+
+
+
+## [3.8.2](https://github.com/lerna/lerna/compare/v3.8.1...v3.8.2) (2019-01-03)
+
+
+### Bug Fixes
+
+* **publish:** Avoid recursive root lifecycle execution ([e133134](https://github.com/lerna/lerna/commit/e133134))
+* **publish:** Run root prepublish lifecycle if it exists ([c5676bb](https://github.com/lerna/lerna/commit/c5676bb))
+
+
+
+
+
+## [3.8.1](https://github.com/lerna/lerna/compare/v3.8.0...v3.8.1) (2018-12-31)
+
+
+### Bug Fixes
+
+* **progress:** Correctly avoid progress where we don't want it ([0de3df9](https://github.com/lerna/lerna/commit/0de3df9))
+* **progress:** Enable progress during logging setup, correcting default ([da81e60](https://github.com/lerna/lerna/commit/da81e60))
+* **publish:** --canary should also respect --include-merged-tags ([462b15c](https://github.com/lerna/lerna/commit/462b15c)), closes [#1820](https://github.com/lerna/lerna/issues/1820)
+
+
+
+
+
+# [3.8.0](https://github.com/lerna/lerna/compare/v3.7.2...v3.8.0) (2018-12-21)
+
+
+### Bug Fixes
+
+* **publish:** Heighten dist-tag success log level to distinguish from noisy fetch logging ([f1f0871](https://github.com/lerna/lerna/commit/f1f0871))
+* **publish:** Unhide options shared with version command ([09fccd3](https://github.com/lerna/lerna/commit/09fccd3))
+
+
+### Features
+
+* **publish:** Add --contents option ([5e790e5](https://github.com/lerna/lerna/commit/5e790e5)), closes [#1817](https://github.com/lerna/lerna/issues/1817)
+
+
+
+
+
+## [3.7.2](https://github.com/lerna/lerna/compare/v3.7.1...v3.7.2) (2018-12-21)
+
+
+### Bug Fixes
+
+* **pack-directory:** Accept lazy Package, passing directory as second parameter ([c6819c0](https://github.com/lerna/lerna/commit/c6819c0))
+* **publish:** Re-order --git-reset flag in options ([0653af9](https://github.com/lerna/lerna/commit/0653af9))
+* **publish:** Remove unused --npm-client option ([4e7eaef](https://github.com/lerna/lerna/commit/4e7eaef))
+
+
+
+
+
+## [3.7.1](https://github.com/lerna/lerna/compare/v3.7.0...v3.7.1) (2018-12-20)
+
+
+### Bug Fixes
+
+* **publish:** Do not pass this.logger into conf, it does not respect log.level ([9bcd503](https://github.com/lerna/lerna/commit/9bcd503))
+* **publish:** Pulse progress bar during execution ([49b8771](https://github.com/lerna/lerna/commit/49b8771))
+
+
+
+
+
+# [3.7.0](https://github.com/lerna/lerna/compare/v3.6.0...v3.7.0) (2018-12-19)
+
+
+### Bug Fixes
+
+* **publish:** Remove unused dependency ([d4ab6c4](https://github.com/lerna/lerna/commit/d4ab6c4))
+* **publish:** Short-circuit retries for npm username validation ([ca4dd95](https://github.com/lerna/lerna/commit/ca4dd95))
+
+
+### Features
+
+* **npm-publish:** Use libnpm/publish instead of subprocess execution ([433275e](https://github.com/lerna/lerna/commit/433275e))
+* **publish:** Add npm-session, npm-version, and user-agent fields to libnpm/fetch config ([5edb27d](https://github.com/lerna/lerna/commit/5edb27d))
+* **publish:** Refresh package manifests after prepare/prepublishOnly lifecycle ([e6b31f8](https://github.com/lerna/lerna/commit/e6b31f8))
+* **publish:** Use [@lerna](https://github.com/lerna)/pack-directory instead of subprocess npm pack ([fd7299f](https://github.com/lerna/lerna/commit/fd7299f))
+* **publish:** Use libnpm/publish instead of subprocess execution ([58fda8d](https://github.com/lerna/lerna/commit/58fda8d))
+
+
+
+
+
+# [3.6.0](https://github.com/lerna/lerna/compare/v3.5.1...v3.6.0) (2018-12-07)
+
+
+### Bug Fixes
+
+* **pkg:** Exclude __mocks__ from package tarball ([4017f37](https://github.com/lerna/lerna/commit/4017f37))
+
+
+### Features
+
+* Migrate existing usage to libnpm ([0d3a786](https://github.com/lerna/lerna/commit/0d3a786)), closes [#1767](https://github.com/lerna/lerna/issues/1767)
+* **npm-dist-tag:** Use fetch API instead of CLI to make changes ([54008c6](https://github.com/lerna/lerna/commit/54008c6))
+* **publish:** Add a "from-package" positional argument ([#1708](https://github.com/lerna/lerna/issues/1708)) ([16611be](https://github.com/lerna/lerna/commit/16611be)), closes [#1648](https://github.com/lerna/lerna/issues/1648)
+* **publish:** Attempt profile retrieval before whoami endpoint during user validation ([38097d8](https://github.com/lerna/lerna/commit/38097d8))
+
+
+
+
+
+## [3.5.1](https://github.com/lerna/lerna/compare/v3.5.0...v3.5.1) (2018-11-29)
+
+
+### Bug Fixes
+
+* **publish:** Pass explicit list of files to checkout instead of globs ([a4c57c2](https://github.com/lerna/lerna/commit/a4c57c2)), closes [#1786](https://github.com/lerna/lerna/issues/1786)
+
+
+
+
+
+# [3.5.0](https://github.com/lerna/lerna/compare/v3.4.3...v3.5.0) (2018-11-27)
+
+
+### Bug Fixes
+
+* **publish:** Ignore non-release tags when detecting `from-git` ([#1782](https://github.com/lerna/lerna/issues/1782)) ([3cb7465](https://github.com/lerna/lerna/commit/3cb7465))
+* **version:** Add friendly error message when remote branch doesn't exist ([#1741](https://github.com/lerna/lerna/issues/1741)) ([cd34b48](https://github.com/lerna/lerna/commit/cd34b48))
+* **version:** Don't version private packages lacking a version field ([#1654](https://github.com/lerna/lerna/issues/1654)) ([578bb19](https://github.com/lerna/lerna/commit/578bb19))
+
+
+### Features
+
+* **publish:** Add option `--no-git-reset` to leave unstaged changes in working tree ([#1791](https://github.com/lerna/lerna/issues/1791)) ([eae5619](https://github.com/lerna/lerna/commit/eae5619))
+
+
+
+
+
 ## [3.4.3](https://github.com/lerna/lerna/compare/v3.4.2...v3.4.3) (2018-10-10)
 
 

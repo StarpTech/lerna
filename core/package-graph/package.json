@@ -1,6 +1,6 @@
 {
   "name": "@lerna/package-graph",
-  "version": "3.1.2",
+  "version": "3.11.0",
   "description": "Lerna's internal representation of a package graph",
   "keywords": [
     "lerna",
@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@lerna/validation-error": "file:../validation-error",
-    "npm-package-arg": "^6.0.0",
+    "npm-package-arg": "^6.1.0",
     "semver": "^5.5.0"
   }
 }

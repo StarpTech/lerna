@@ -1,6 +1,6 @@
 {
   "name": "@lerna/run-lifecycle",
-  "version": "3.4.1",
+  "version": "3.11.0",
   "description": "An internal Lerna tool",
   "keywords": [
     "lerna",
@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@lerna/npm-conf": "file:../npm-conf",
-    "npm-lifecycle": "^2.0.0",
+    "figgy-pudding": "^3.5.1",
+    "npm-lifecycle": "^2.1.0",
     "npmlog": "^4.1.2"
   }
 }

@@ -17,11 +17,12 @@ exports.builder = yargs => {
       type: "string",
     })
     .options({
-      bail: {
+      "npm-client": {
         group: "Command Options:",
-        describe: "Stop when the script fails in a package.\nPass --no-bail to continue despite failure.",
-        defaultDescription: "true",
-        type: "boolean",
+        describe: "Executable used to run scripts (npm, yarn, pnpm, ...).",
+        defaultDescription: "npm",
+        type: "string",
+        requiresArg: true,
       },
       stream: {
         group: "Command Options:",
@@ -30,23 +31,30 @@ exports.builder = yargs => {
       },
       parallel: {
         group: "Command Options:",
-        describe: "Run script in all packages with unlimited concurrency, streaming prefixed output.",
+        describe: "Run script with unlimited concurrency, streaming prefixed output.",
+        type: "boolean",
+      },
+      "no-bail": {
+        group: "Command Options:",
+        describe: "Continue running script despite non-zero exit in a given package.",
+        type: "boolean",
+      },
+      bail: {
+        // proxy for --no-bail
+        hidden: true,
         type: "boolean",
       },
       // This option controls prefix for stream output so that it can be disabled to be friendly
       // to tools like Visual Studio Code to highlight the raw results
-      prefix: {
+      "no-prefix": {
         group: "Command Options:",
-        describe: "Pass --no-prefix to disable prefixing of streamed output.",
-        defaultDescription: "true",
+        describe: "Do not prefix streaming output.",
         type: "boolean",
       },
-      "npm-client": {
-        group: "Command Options:",
-        describe: "Executable used to run scripts (npm, yarn, pnpm, ...).",
-        defaultDescription: "npm",
-        type: "string",
-        requiresArg: true,
+      prefix: {
+        // proxy for --no-prefix
+        hidden: true,
+        type: "boolean",
       },
     });
 

@@ -8,9 +8,11 @@ jest.mock("../lib/get-npm-username");
 jest.mock("../../version/lib/git-push");
 jest.mock("../../version/lib/is-anything-committed");
 jest.mock("../../version/lib/is-behind-upstream");
+jest.mock("../../version/lib/remote-branch-exists");
 
 // mocked modules
 const runLifecycle = require("@lerna/run-lifecycle");
+const loadJsonFile = require("load-json-file");
 
 // helpers
 const initFixture = require("@lerna-test/init-fixture")(__dirname);
@@ -19,6 +21,12 @@ const initFixture = require("@lerna-test/init-fixture")(__dirname);
 const lernaPublish = require("@lerna-test/command-runner")(require("../command"));
 
 describe("lifecycle scripts", () => {
+  const npmLifecycleEvent = process.env.npm_lifecycle_event;
+
+  afterEach(() => {
+    process.env.npm_lifecycle_event = npmLifecycleEvent;
+  });
+
   it("calls publish lifecycle scripts for root and packages", async () => {
     const cwd = await initFixture("lifecycle");
 
@@ -28,20 +36,6 @@ describe("lifecycle scripts", () => {
       // "lifecycle" is the root manifest name
       expect(runLifecycle).toHaveBeenCalledWith(expect.objectContaining({ name: "lifecycle" }), script);
     });
-
-    // all leaf package lifecycles _EXCEPT_ prepublishOnly & postpublish are called by npm pack
-    expect(runLifecycle).not.toHaveBeenCalledWith(
-      expect.objectContaining({ name: "package-1" }),
-      expect.stringMatching("prepare")
-    );
-    expect(runLifecycle).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "package-1" }),
-      expect.stringMatching("prepublishOnly")
-    );
-    expect(runLifecycle).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "package-1" }),
-      expect.stringMatching("postpublish")
-    );
 
     // package-2 lacks version lifecycle scripts
     expect(runLifecycle).not.toHaveBeenCalledWith(
@@ -58,13 +52,42 @@ describe("lifecycle scripts", () => {
       ["package-1", "postversion"],
       ["lifecycle", "postversion"],
       // publish-specific
+      ["lifecycle", "prepublish"],
       ["lifecycle", "prepare"],
       ["lifecycle", "prepublishOnly"],
       ["lifecycle", "prepack"],
-      ["package-1", "prepublishOnly"],
       ["lifecycle", "postpack"],
-      ["package-1", "postpublish"],
       ["lifecycle", "postpublish"],
+    ]);
+
+    expect(loadJsonFile.registry).toMatchInlineSnapshot(`
+Map {
+  "/packages/package-1" => 4,
+  "/packages/package-2" => 4,
+}
+`);
+  });
+
+  it("does not execute recursive root scripts", async () => {
+    const cwd = await initFixture("lifecycle");
+
+    process.env.npm_lifecycle_event = "prepublish";
+
+    await lernaPublish(cwd)();
+
+    expect(runLifecycle.getOrderedCalls()).toEqual([
+      // TODO: separate from VersionCommand details
+      ["lifecycle", "preversion"],
+      ["package-1", "preversion"],
+      ["package-1", "version"],
+      ["lifecycle", "version"],
+      ["package-1", "postversion"],
+      ["lifecycle", "postversion"],
+      // publish-specific
+      ["lifecycle", "prepare"],
+      ["lifecycle", "prepublishOnly"],
+      ["lifecycle", "prepack"],
+      ["lifecycle", "postpack"],
     ]);
   });
 });

@@ -3,6 +3,197 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [3.11.0](https://github.com/lerna/lerna/compare/v3.10.8...v3.11.0) (2019-02-08)
+
+
+### Bug Fixes
+
+* **deps:** Explicit npm-package-arg ^6.1.0 ([4b20791](https://github.com/lerna/lerna/commit/4b20791))
+* **deps:** Explicit npmlog ^4.1.2 ([571c2e2](https://github.com/lerna/lerna/commit/571c2e2))
+* **deps:** Remove unused libnpm (replaced by direct sub-packages) ([1caeb28](https://github.com/lerna/lerna/commit/1caeb28))
+
+
+
+
+
+## [3.10.6](https://github.com/lerna/lerna/compare/v3.10.5...v3.10.6) (2019-01-19)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+## [3.10.5](https://github.com/lerna/lerna/compare/v3.10.4...v3.10.5) (2019-01-11)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+## [3.10.4](https://github.com/lerna/lerna/compare/v3.10.3...v3.10.4) (2019-01-10)
+
+
+### Bug Fixes
+
+* **bootstrap:** Do not `npm ci` when hoisting ([27516b9](https://github.com/lerna/lerna/commit/27516b9)), closes [#1865](https://github.com/lerna/lerna/issues/1865)
+
+
+
+
+
+## [3.10.3](https://github.com/lerna/lerna/compare/v3.10.2...v3.10.3) (2019-01-10)
+
+
+### Bug Fixes
+
+* **bootstrap:** When filtering, only bootstrap filtered packages ([71174e4](https://github.com/lerna/lerna/commit/71174e4)), closes [#1421](https://github.com/lerna/lerna/issues/1421) [#1766](https://github.com/lerna/lerna/issues/1766)
+
+
+
+
+
+## [3.10.2](https://github.com/lerna/lerna/compare/v3.10.1...v3.10.2) (2019-01-09)
+
+
+### Bug Fixes
+
+* **bootstrap:** Remove fancy root lifecycle execution, it was foolish ([9f80722](https://github.com/lerna/lerna/commit/9f80722)), closes [#1857](https://github.com/lerna/lerna/issues/1857)
+
+
+
+
+
+## [3.10.1](https://github.com/lerna/lerna/compare/v3.10.0...v3.10.1) (2019-01-09)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+# [3.10.0](https://github.com/lerna/lerna/compare/v3.9.1...v3.10.0) (2019-01-08)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+## [3.9.1](https://github.com/lerna/lerna/compare/v3.9.0...v3.9.1) (2019-01-08)
+
+
+### Bug Fixes
+
+* **bootstrap:** Don't pass `--ignore-scripts` to `npm install` ([e602838](https://github.com/lerna/lerna/commit/e602838)), closes [#1855](https://github.com/lerna/lerna/issues/1855)
+* **bootstrap:** Prevent recursive execution from all install lifecycles ([ea9dbbe](https://github.com/lerna/lerna/commit/ea9dbbe))
+
+
+
+
+
+# [3.9.0](https://github.com/lerna/lerna/compare/v3.8.5...v3.9.0) (2019-01-08)
+
+
+### Bug Fixes
+
+* **bootstrap:** Only run install lifecycles once-per-package, in topological order ([929ae22](https://github.com/lerna/lerna/commit/929ae22))
+
+
+### Features
+
+* **bootstrap:** Add `--ignore-prepublish` option ([f14fc06](https://github.com/lerna/lerna/commit/f14fc06))
+* **bootstrap:** Run root install lifecycles where appropriate ([944e36f](https://github.com/lerna/lerna/commit/944e36f))
+
+
+
+
+
+## [3.8.5](https://github.com/lerna/lerna/compare/v3.8.4...v3.8.5) (2019-01-05)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+## [3.8.2](https://github.com/lerna/lerna/compare/v3.8.1...v3.8.2) (2019-01-03)
+
+
+### Bug Fixes
+
+* **bootstrap:** Bail out of hoisted recursive lifecycles ([169c943](https://github.com/lerna/lerna/commit/169c943)), closes [#1125](https://github.com/lerna/lerna/issues/1125)
+
+
+
+
+
+## [3.8.1](https://github.com/lerna/lerna/compare/v3.8.0...v3.8.1) (2018-12-31)
+
+
+### Bug Fixes
+
+* **progress:** Correctly avoid progress where we don't want it ([0de3df9](https://github.com/lerna/lerna/commit/0de3df9))
+* **progress:** Enable progress during logging setup, correcting default ([da81e60](https://github.com/lerna/lerna/commit/da81e60))
+
+
+
+
+
+## [3.7.2](https://github.com/lerna/lerna/compare/v3.7.1...v3.7.2) (2018-12-21)
+
+**Note:** Version bump only for package @lerna/bootstrap
+
+
+
+
+
+## [3.7.1](https://github.com/lerna/lerna/compare/v3.7.0...v3.7.1) (2018-12-20)
+
+
+### Bug Fixes
+
+* **bootstrap:** Pulse progress bar during execution ([b38a151](https://github.com/lerna/lerna/commit/b38a151))
+
+
+
+
+
+# [3.7.0](https://github.com/lerna/lerna/compare/v3.6.0...v3.7.0) (2018-12-19)
+
+
+### Bug Fixes
+
+* **bootstrap:** Use run-lifecycle factory instead of manual filtering ([d32feaa](https://github.com/lerna/lerna/commit/d32feaa))
+
+
+
+
+
+# [3.6.0](https://github.com/lerna/lerna/compare/v3.5.1...v3.6.0) (2018-12-07)
+
+
+### Features
+
+* **bootstrap:** Support `--force-local` option ([#1807](https://github.com/lerna/lerna/issues/1807)) ([25572af](https://github.com/lerna/lerna/commit/25572af)), closes [#1763](https://github.com/lerna/lerna/issues/1763)
+* Migrate existing usage to libnpm ([0d3a786](https://github.com/lerna/lerna/commit/0d3a786)), closes [#1767](https://github.com/lerna/lerna/issues/1767)
+
+
+
+
+
+# [3.5.0](https://github.com/lerna/lerna/compare/v3.4.3...v3.5.0) (2018-11-27)
+
+
+### Bug Fixes
+
+* prettier ([001a6df](https://github.com/lerna/lerna/commit/001a6df))
+
+
+
+
+
 ## [3.4.1](https://github.com/lerna/lerna/compare/v3.4.0...v3.4.1) (2018-10-04)
 
 

@@ -2,12 +2,12 @@
 
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const pFinally = require("p-finally");
 const pMap = require("p-map");
 const pPipe = require("p-pipe");
 const pReduce = require("p-reduce");
 const semver = require("semver");
-const getAuth = require("npm-registry-fetch/auth");
 
 const Command = require("@lerna/command");
 const describeRef = require("@lerna/describe-ref");
@@ -18,14 +18,18 @@ const collectUpdates = require("@lerna/collect-updates");
 const npmConf = require("@lerna/npm-conf");
 const npmDistTag = require("@lerna/npm-dist-tag");
 const npmPublish = require("@lerna/npm-publish");
+const packDirectory = require("@lerna/pack-directory");
+const logPacked = require("@lerna/log-packed");
 const { createRunner } = require("@lerna/run-lifecycle");
 const batchPackages = require("@lerna/batch-packages");
 const runParallelBatches = require("@lerna/run-parallel-batches");
+const pulseTillDone = require("@lerna/pulse-till-done");
 const versionCommand = require("@lerna/version");
 
 const createTempLicenses = require("./lib/create-temp-licenses");
 const getCurrentSHA = require("./lib/get-current-sha");
 const getCurrentTags = require("./lib/get-current-tags");
+const getUnpublishedPackages = require("./lib/get-unpublished-packages");
 const getNpmUsername = require("./lib/get-npm-username");
 const getTaggedPackages = require("./lib/get-tagged-packages");
 const getPackagesWithoutLicense = require("./lib/get-packages-without-license");
@@ -50,7 +54,7 @@ class PublishCommand extends Command {
       // TODO: remove in next major release
       this.logger.warn("deprecated", "Instead of --skip-npm, call `lerna version` directly");
 
-      return versionCommand(this._argv).then(() => false);
+      return versionCommand(this.argv).then(() => false);
     }
 
     if (this.options.canary) {
@@ -61,16 +65,30 @@ class PublishCommand extends Command {
       this.logger.info("require-scripts", "enabled");
     }
 
-    // inverted boolean options
-    this.verifyAccess = this.options.verifyAccess !== false;
-
     // https://docs.npmjs.com/misc/config#save-prefix
     this.savePrefix = this.options.exact ? "" : "^";
 
+    // inverted boolean options are only respected if prefixed with `--no-`, e.g. `--no-verify-access`
+    this.gitReset = this.options.gitReset !== false;
+    this.verifyAccess = this.options.verifyAccess !== false;
+
+    // npmSession and user-agent are consumed by npm-registry-fetch (via libnpmpublish)
+    const npmSession = crypto.randomBytes(8).toString("hex");
+    const userAgent = `lerna/${this.options.lernaVersion}/node@${process.version}+${process.arch} (${
+      process.platform
+    })`;
+
+    this.logger.verbose("session", npmSession);
+    this.logger.verbose("user-agent", userAgent);
+
     this.conf = npmConf({
-      log: this.logger,
+      lernaCommand: "publish",
+      npmSession,
+      npmVersion: userAgent,
       registry: this.options.registry,
     });
+
+    this.conf.set("user-agent", userAgent, "cli");
 
     if (this.conf.get("registry") === "https://registry.yarnpkg.com") {
       this.logger.warn("", "Yarn's registry proxy is broken, replacing with public npm registry");
@@ -79,28 +97,26 @@ class PublishCommand extends Command {
       this.conf.set("registry", "https://registry.npmjs.org/", "cli");
     }
 
-    // all consumers need a token
-    const registry = this.conf.get("registry");
-    const auth = getAuth(registry, this.conf);
+    // inject --dist-tag into opts, if present
+    const distTag = this.getDistTag();
 
-    if (auth.token) {
-      this.conf.set("token", auth.token, "cli");
+    if (distTag) {
+      this.conf.set("tag", distTag.trim(), "cli");
     }
 
-    this.npmConfig = {
-      npmClient: this.options.npmClient || "npm",
-      registry: this.conf.get("registry"),
-    };
+    this.runPackageLifecycle = createRunner(this.options);
+
+    // don't execute recursively if run from a poorly-named script
+    this.runRootLifecycle = /^(pre|post)?publish$/.test(process.env.npm_lifecycle_event)
+      ? stage => {
+          this.logger.warn("lifecycle", "Skipping root %j because it has already been called", stage);
+        }
+      : stage => this.runPackageLifecycle(this.project.manifest, stage);
 
     let chain = Promise.resolve();
 
-    // validate user has valid npm credentials first,
-    // by far the most common form of failed execution
-    chain = chain.then(() => getNpmUsername(this.conf));
-    chain = chain.then(username => {
-      // username is necessary for subsequent access check
-      this.conf.add({ username }, "cmd");
-    });
+    // attempting to publish a release with local changes is not allowed
+    chain = chain.then(() => this.verifyWorkingTreeClean());
     chain = chain.then(() => this.findVersionedUpdates());
 
     return chain.then(result => {
@@ -119,7 +135,6 @@ class PublishCommand extends Command {
       this.updates = result.updates;
       this.updatesVersions = new Map(result.updatesVersions);
 
-      this.runPackageLifecycle = createRunner(this.options);
       this.packagesToPublish = this.updates.map(({ pkg }) => pkg).filter(pkg => !pkg.private);
       this.batchedPackages = this.toposort
         ? batchPackages(
@@ -133,8 +148,9 @@ class PublishCommand extends Command {
         : [this.packagesToPublish];
 
       if (result.needsConfirmation) {
-        // only confirm for --canary or bump === "from-git",
-        // as VersionCommand has its own confirmation prompt
+        // only confirm for --canary, bump === "from-git",
+        // or bump === "from-package", as VersionCommand
+        // has its own confirmation prompt
         return this.confirmPublish();
       }
 
@@ -157,9 +173,13 @@ class PublishCommand extends Command {
 
     chain = chain.then(() => this.resolveLocalDependencyLinks());
     chain = chain.then(() => this.annotateGitHead());
+    chain = chain.then(() => this.serializeChanges());
     chain = chain.then(() => this.packUpdated());
     chain = chain.then(() => this.publishPacked());
-    chain = chain.then(() => this.resetChanges());
+
+    if (this.gitReset) {
+      chain = chain.then(() => this.resetChanges());
+    }
 
     if (this.options.tempTag) {
       chain = chain.then(() => this.npmUpdateAsLatest());
@@ -176,31 +196,33 @@ class PublishCommand extends Command {
     });
   }
 
+  verifyWorkingTreeClean() {
+    return describeRef(this.execOpts).then(checkWorkingTree.throwIfUncommitted);
+  }
+
   findVersionedUpdates() {
     let chain = Promise.resolve();
 
     if (this.options.bump === "from-git") {
       chain = chain.then(() => this.detectFromGit());
+    } else if (this.options.bump === "from-package") {
+      chain = chain.then(() => this.detectFromPackage());
     } else if (this.options.canary) {
       chain = chain.then(() => this.detectCanaryVersions());
     } else {
-      chain = chain.then(() => versionCommand(this._argv));
+      chain = chain.then(() => versionCommand(this.argv));
     }
 
     return chain;
   }
 
-  verifyWorkingTreeClean() {
-    return describeRef(this.execOpts).then(checkWorkingTree.throwIfUncommitted);
-  }
-
   detectFromGit() {
+    const { tagVersionPrefix = "v" } = this.options;
+    const matchingPattern = this.project.isIndependent() ? "*@*" : `${tagVersionPrefix}*.*.*`;
+
     let chain = Promise.resolve();
 
-    // attempting to publish a tagged release with local changes is not allowed
-    chain = chain.then(() => this.verifyWorkingTreeClean());
-
-    chain = chain.then(() => getCurrentTags(this.execOpts));
+    chain = chain.then(() => getCurrentTags(this.execOpts, matchingPattern));
     chain = chain.then(taggedPackageNames => {
       if (!taggedPackageNames.length) {
         this.logger.notice("from-git", "No tagged release found");
@@ -226,21 +248,43 @@ class PublishCommand extends Command {
     });
   }
 
+  detectFromPackage() {
+    let chain = Promise.resolve();
+
+    chain = chain.then(() => getUnpublishedPackages(this.packageGraph, this.conf.snapshot));
+    chain = chain.then(unpublished => {
+      if (!unpublished.length) {
+        this.logger.notice("from-package", "No unpublished release found");
+      }
+
+      return unpublished;
+    });
+
+    return chain.then(updates => {
+      const updatesVersions = updates.map(({ pkg }) => [pkg.name, pkg.version]);
+
+      return {
+        updates,
+        updatesVersions,
+        needsConfirmation: true,
+      };
+    });
+  }
+
   detectCanaryVersions() {
+    const { cwd } = this.execOpts;
     const {
       bump = "prepatch",
       preid = "alpha",
       tagVersionPrefix = "v",
       ignoreChanges,
       forcePublish,
+      includeMergedTags,
     } = this.options;
     // "prerelease" and "prepatch" are identical, for our purposes
     const release = bump.startsWith("pre") ? bump.replace("release", "patch") : `pre${bump}`;
 
     let chain = Promise.resolve();
-
-    // attempting to publish a canary release with local changes is not allowed
-    chain = chain.then(() => this.verifyWorkingTreeClean());
 
     // find changed packages since last release, if any
     chain = chain.then(() =>
@@ -249,6 +293,7 @@ class PublishCommand extends Command {
         canary: true,
         ignoreChanges,
         forcePublish,
+        includeMergedTags,
       })
     );
 
@@ -265,10 +310,13 @@ class PublishCommand extends Command {
       // each package is described against its tags only
       chain = chain.then(updates =>
         pMap(updates, ({ pkg }) =>
-          describeRef({
-            match: `${pkg.name}@*`,
-            cwd: this.execOpts.cwd,
-          })
+          describeRef(
+            {
+              match: `${pkg.name}@*`,
+              cwd,
+            },
+            includeMergedTags
+          )
             .then(({ lastVersion = pkg.version, refCount, sha }) =>
               // an unpublished package will have no reachable git tag
               makeVersion({ lastVersion, refCount, sha })
@@ -282,10 +330,13 @@ class PublishCommand extends Command {
     } else {
       // all packages are described against the last tag
       chain = chain.then(updates =>
-        describeRef({
-          match: `${tagVersionPrefix}*.*.*`,
-          cwd: this.execOpts.cwd,
-        })
+        describeRef(
+          {
+            match: `${tagVersionPrefix}*.*.*`,
+            cwd,
+          },
+          includeMergedTags
+        )
           .then(makeVersion)
           .then(version => updates.map(({ pkg }) => [pkg.name, version]))
           .then(updatesVersions => ({
@@ -340,14 +391,28 @@ class PublishCommand extends Command {
   prepareRegistryActions() {
     let chain = Promise.resolve();
 
+    if (this.conf.get("registry") !== "https://registry.npmjs.org/") {
+      this.logger.notice("", "Skipping all user and access validation due to third-party registry");
+      this.logger.notice("", "Make sure you're authenticated properly ¯\\_(ツ)_/¯");
+
+      return chain;
+    }
+
     /* istanbul ignore if */
     if (process.env.LERNA_INTEGRATION) {
       return chain;
     }
 
-    // if no username was retrieved, don't bother validating
-    if (this.conf.get("username") && this.verifyAccess) {
-      chain = chain.then(() => verifyNpmPackageAccess(this.packagesToPublish, this.conf));
+    if (this.verifyAccess) {
+      // validate user has valid npm credentials first,
+      // by far the most common form of failed execution
+      chain = chain.then(() => getNpmUsername(this.conf.snapshot));
+      chain = chain.then(username => {
+        // if no username was retrieved, don't bother validating
+        if (username) {
+          return verifyNpmPackageAccess(this.packagesToPublish, username, this.conf.snapshot);
+        }
+      });
     }
 
     return chain;
@@ -367,7 +432,7 @@ class PublishCommand extends Command {
         pkg.updateLocalDependency(resolved, depVersion, this.savePrefix);
       }
 
-      // writing changes to disk handled in annotateGitHead()
+      // writing changes to disk handled in serializeChanges()
     });
   }
 
@@ -389,30 +454,34 @@ class PublishCommand extends Command {
         pkg.updateLocalDependency(resolved, depVersion, this.savePrefix);
       }
 
-      // writing changes to disk handled in annotateGitHead()
+      // writing changes to disk handled in serializeChanges()
     });
   }
 
   annotateGitHead() {
     const gitHead = getCurrentSHA(this.execOpts);
 
-    return pMap(this.packagesToPublish, pkg => {
+    for (const pkg of this.packagesToPublish) {
       // provide gitHead property that is normally added during npm publish
       pkg.set("gitHead", gitHead);
+    }
 
-      return pkg.serialize();
-    });
+    // writing changes to disk handled in serializeChanges()
+  }
+
+  serializeChanges() {
+    return pMap(this.packagesToPublish, pkg => pkg.serialize());
   }
 
   resetChanges() {
     // the package.json files are changed (by gitHead if not --canary)
     // and we should always leave the working tree clean
-    return pReduce(this.project.packageConfigs, (_, pkgGlob) =>
-      gitCheckout(`${pkgGlob}/package.json`, this.execOpts)
-    ).then(() =>
-      // --skip-git should not leave unstaged changes behind
-      gitCheckout(this.project.manifest.location, this.execOpts)
-    );
+    const { cwd } = this.execOpts;
+    const dirtyManifests = [this.project.manifest]
+      .concat(this.packagesToPublish)
+      .map(pkg => path.relative(cwd, pkg.manifestLocation));
+
+    return gitCheckout(dirtyManifests, this.execOpts);
   }
 
   execScript(pkg, script) {
@@ -452,38 +521,40 @@ class PublishCommand extends Command {
 
     let chain = Promise.resolve();
 
-    chain = chain.then(() => {
-      this.npmPack = npmPublish.makePacker(this.project.manifest);
-    });
-
     chain = chain.then(() => createTempLicenses(this.project.licensePath, this.packagesToBeLicensed));
 
+    // despite being deprecated for years...
+    chain = chain.then(() => this.runRootLifecycle("prepublish"));
+
+    // these lifecycles _should_ never be employed to run `lerna publish`...
     chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "prepare"));
     chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "prepublishOnly"));
     chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "prepack"));
 
-    const actions = [
-      pkg =>
-        // npm pack already runs prepare and prepublish
-        // prepublishOnly is _not_ run when publishing a tarball
-        // TECHNICALLY out of order, but not much we can do about that
-        this.runPackageLifecycle(pkg, "prepublishOnly"),
-    ];
+    const { contents } = this.options;
+    const getLocation = contents ? pkg => path.resolve(pkg.location, contents) : pkg => pkg.location;
 
-    if (this.options.requireScripts) {
-      actions.push(pkg => this.execScript(pkg, "prepublish"));
-    }
+    const opts = this.conf.snapshot;
+    const mapper = pPipe(
+      [
+        this.options.requireScripts && (pkg => this.execScript(pkg, "prepublish")),
 
-    const mapper = pPipe(actions);
+        pkg =>
+          pulseTillDone(packDirectory(pkg, getLocation(pkg), opts)).then(packed => {
+            tracker.verbose("packed", pkg.name, path.relative(this.project.rootPath, getLocation(pkg)));
+            tracker.completeWork(1);
+
+            // store metadata for use in this.publishPacked()
+            pkg.packed = packed;
+
+            // manifest may be mutated by any previous lifecycle
+            return pkg.refresh();
+          }),
+      ].filter(Boolean)
+    );
 
     chain = chain.then(() =>
-      pReduce(this.batchedPackages, (_, batch) =>
-        pMap(batch, mapper)
-          .then(() => this.npmPack(batch))
-          .then(() => {
-            tracker.completeWork(batch.length);
-          })
-      )
+      pReduce(this.batchedPackages, (_, batch) => pMap(batch, mapper, { concurrency: 10 }))
     );
 
     chain = chain.then(() => removeTempLicenses(this.packagesToBeLicensed));
@@ -497,68 +568,73 @@ class PublishCommand extends Command {
   }
 
   publishPacked() {
-    // if we skip temp tags we should tag with the proper value immediately
-    const distTag = this.options.tempTag ? "lerna-temp" : this.getDistTag();
-    const tracker = this.logger.newItem(`${this.npmConfig.npmClient} publish`);
+    const tracker = this.logger.newItem("publish");
 
     tracker.addWork(this.packagesToPublish.length);
 
     let chain = Promise.resolve();
 
-    const actions = [
-      pkg => npmPublish(pkg, distTag, this.npmConfig),
-      // postpublish is _not_ run when publishing a tarball
-      pkg => this.runPackageLifecycle(pkg, "postpublish"),
-    ];
-
-    if (this.options.requireScripts) {
-      actions.push(pkg => this.execScript(pkg, "postpublish"));
-    }
-
-    actions.push(pkg => {
-      tracker.info("published", pkg.name, pkg.version);
-      tracker.completeWork(1);
-
-      return pkg;
+    const opts = Object.assign(this.conf.snapshot, {
+      // distTag defaults to "latest" OR whatever is in pkg.publishConfig.tag
+      // if we skip temp tags we should tag with the proper value immediately
+      tag: this.options.tempTag ? "lerna-temp" : this.conf.get("tag"),
     });
 
-    const mapper = pPipe(actions);
+    const mapper = pPipe(
+      [
+        pkg =>
+          pulseTillDone(npmPublish(pkg, pkg.packed.tarFilePath, opts)).then(() => {
+            tracker.success("published", pkg.name, pkg.version);
+            tracker.completeWork(1);
+
+            logPacked(pkg.packed);
+
+            return pkg;
+          }),
+
+        this.options.requireScripts && (pkg => this.execScript(pkg, "postpublish")),
+      ].filter(Boolean)
+    );
 
     chain = chain.then(() => runParallelBatches(this.batchedPackages, this.concurrency, mapper));
 
-    chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "postpublish"));
+    // cyclical "publish" lifecycles are automatically skipped
+    chain = chain.then(() => this.runRootLifecycle("publish"));
+    chain = chain.then(() => this.runRootLifecycle("postpublish"));
 
     return pFinally(chain, () => tracker.finish());
   }
 
   npmUpdateAsLatest() {
-    const distTag = this.getDistTag() || "latest";
     const tracker = this.logger.newItem("npmUpdateAsLatest");
 
     tracker.addWork(this.packagesToPublish.length);
+    tracker.showProgress();
 
     let chain = Promise.resolve();
 
-    const actions = [
-      pkg =>
-        Promise.resolve()
-          .then(() => npmDistTag.check(pkg, "lerna-temp", this.npmConfig))
-          .then(exists => {
-            if (exists) {
-              return npmDistTag.remove(pkg, "lerna-temp", this.npmConfig);
-            }
-          })
-          .then(() => npmDistTag.add(pkg, distTag, this.npmConfig))
-          .then(() => pkg),
-      pkg => {
-        tracker.info("dist-tag", "%s@%s => %j", pkg.name, pkg.version, distTag);
-        tracker.completeWork(1);
+    const opts = this.conf.snapshot;
+    const getDistTag = publishConfig => {
+      if (opts.tag === "latest" && publishConfig && publishConfig.tag) {
+        return publishConfig.tag;
+      }
 
-        return pkg;
-      },
-    ];
+      return opts.tag;
+    };
+    const mapper = pkg => {
+      const spec = `${pkg.name}@${pkg.version}`;
+      const distTag = getDistTag(pkg.get("publishConfig"));
 
-    const mapper = pPipe(actions);
+      return Promise.resolve()
+        .then(() => pulseTillDone(npmDistTag.remove(spec, "lerna-temp", opts)))
+        .then(() => pulseTillDone(npmDistTag.add(spec, distTag, opts)))
+        .then(() => {
+          tracker.success("dist-tag", "%s@%s => %j", pkg.name, pkg.version, distTag);
+          tracker.completeWork(1);
+
+          return pkg;
+        });
+    };
 
     chain = chain.then(() => runParallelBatches(this.batchedPackages, this.concurrency, mapper));
 
@@ -566,8 +642,8 @@ class PublishCommand extends Command {
   }
 
   getDistTag() {
-    if (this.options.npmTag) {
-      return this.options.npmTag;
+    if (this.options.distTag) {
+      return this.options.distTag;
     }
 
     if (this.options.canary) {

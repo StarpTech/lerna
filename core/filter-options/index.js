@@ -12,15 +12,21 @@ function filterOptions(yargs) {
     scope: {
       describe: "Include only packages with names matching the given glob.",
       type: "string",
+      requiresArg: true,
     },
     ignore: {
       describe: "Exclude packages with names matching the given glob.",
       type: "string",
+      requiresArg: true,
+    },
+    "no-private": {
+      describe: 'Exclude packages with { "private": true } in their package.json.',
+      type: "boolean",
     },
     private: {
-      describe: "Include private packages.\nPass --no-private to exclude private packages.",
+      // proxy for --no-private
+      hidden: true,
       type: "boolean",
-      defaultDescription: "true",
     },
     since: {
       describe: dedent`

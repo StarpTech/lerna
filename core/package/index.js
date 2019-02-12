@@ -2,7 +2,11 @@
 
 const npa = require("npm-package-arg");
 const path = require("path");
+const loadJsonFile = require("load-json-file");
 const writePkg = require("write-pkg");
+
+// symbol used to "hide" internal state
+const PKG = Symbol("pkg");
 
 function binSafeName({ name, scope }) {
   return scope ? name.substring(scope.length + 1) : name;
@@ -49,35 +53,14 @@ class Package {
       rootPath: {
         value: rootPath,
       },
-      // mutable
-      version: {
-        get() {
-          return pkg.version;
-        },
-        set(version) {
-          pkg.version = version;
-        },
+      // internal state is "private"
+      [PKG]: {
+        configurable: true,
+        value: pkg,
       },
-      // collections
-      dependencies: {
-        get() {
-          return pkg.dependencies;
-        },
-      },
-      devDependencies: {
-        get() {
-          return pkg.devDependencies;
-        },
-      },
-      optionalDependencies: {
-        get() {
-          return pkg.optionalDependencies;
-        },
-      },
-      peerDependencies: {
-        get() {
-          return pkg.peerDependencies;
-        },
+      // safer than instanceof across module boundaries
+      __isLernaPackage: {
+        value: true,
       },
       // immutable
       bin: {
@@ -100,28 +83,92 @@ class Package {
       binLocation: {
         value: path.join(location, "node_modules", ".bin"),
       },
-      // Map-like retrieval and storage of arbitrary values
-      get: {
-        value: key => pkg[key],
-      },
-      set: {
-        value: (key, val) => {
-          pkg[key] = val;
-
-          return this;
-        },
-      },
-      // provide copy of internal pkg for munging
-      toJSON: {
-        value: () => shallowCopy(pkg),
-      },
-      // write changes to disk
-      serialize: {
-        value: () => writePkg(this.manifestLocation, pkg),
-      },
     });
   }
 
+  // accessors
+  get version() {
+    return this[PKG].version;
+  }
+
+  set version(version) {
+    this[PKG].version = version;
+  }
+
+  // "live" collections
+  get dependencies() {
+    return this[PKG].dependencies;
+  }
+
+  get devDependencies() {
+    return this[PKG].devDependencies;
+  }
+
+  get optionalDependencies() {
+    return this[PKG].optionalDependencies;
+  }
+
+  get peerDependencies() {
+    return this[PKG].peerDependencies;
+  }
+
+  /**
+   * Map-like retrieval of arbitrary values
+   * @param {String} key field name to retrieve value
+   * @returns {Any} value stored under key, if present
+   */
+  get(key) {
+    return this[PKG][key];
+  }
+
+  /**
+   * Map-like storage of arbitrary values
+   * @param {String} key field name to store value
+   * @param {Any} val value to store
+   * @returns {Package} instance for chaining
+   */
+  set(key, val) {
+    this[PKG][key] = val;
+
+    return this;
+  }
+
+  /**
+   * Provide shallow copy for munging elsewhere
+   * @returns {Object}
+   */
+  toJSON() {
+    return shallowCopy(this[PKG]);
+  }
+
+  /**
+   * Refresh internal state from disk (e.g., changed by external lifecycles)
+   */
+  refresh() {
+    return loadJsonFile(this.manifestLocation).then(pkg => {
+      // overwrite configurable property
+      Object.defineProperty(this, PKG, {
+        value: pkg,
+      });
+
+      return this;
+    });
+  }
+
+  /**
+   * Write manifest changes to disk
+   * @returns {Promise} resolves when write finished
+   */
+  serialize() {
+    return writePkg(this.manifestLocation, this[PKG]).then(() => this);
+  }
+
+  /**
+   * Mutate local dependency spec according to type
+   * @param {Object} resolved npa metadata
+   * @param {String} depVersion semver
+   * @param {String} savePrefix npm_config_save_prefix
+   */
   updateLocalDependency(resolved, depVersion, savePrefix) {
     const depName = resolved.name;
 
@@ -162,4 +209,22 @@ class Package {
   }
 }
 
+function lazy(ref, dir = ".") {
+  if (typeof ref === "string") {
+    const location = path.resolve(path.basename(ref) === "package.json" ? path.dirname(ref) : ref);
+    const manifest = loadJsonFile.sync(path.join(location, "package.json"));
+
+    return new Package(manifest, location);
+  }
+
+  // don't use instanceof because it fails across nested module boundaries
+  if ("__isLernaPackage" in ref) {
+    return ref;
+  }
+
+  // assume ref is a json object
+  return new Package(ref, dir);
+}
+
 module.exports = Package;
+module.exports.lazy = lazy;

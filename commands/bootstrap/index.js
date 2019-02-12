@@ -12,15 +12,17 @@ const pWaterfall = require("p-waterfall");
 const Command = require("@lerna/command");
 const rimrafDir = require("@lerna/rimraf-dir");
 const hasNpmVersion = require("@lerna/has-npm-version");
-const npmConf = require("@lerna/npm-conf");
 const npmInstall = require("@lerna/npm-install");
-const runLifecycle = require("@lerna/run-lifecycle");
+const { createRunner } = require("@lerna/run-lifecycle");
 const batchPackages = require("@lerna/batch-packages");
 const runParallelBatches = require("@lerna/run-parallel-batches");
 const symlinkBinary = require("@lerna/symlink-binary");
 const symlinkDependencies = require("@lerna/symlink-dependencies");
 const ValidationError = require("@lerna/validation-error");
 const { getFilteredPackages } = require("@lerna/filter-options");
+const PackageGraph = require("@lerna/package-graph");
+const pulseTillDone = require("@lerna/pulse-till-done");
+
 const hasDependencyInstalled = require("./lib/has-dependency-installed");
 const isHoistedPackage = require("./lib/is-hoisted-package");
 
@@ -36,7 +38,7 @@ class BootstrapCommand extends Command {
   }
 
   initialize() {
-    const { registry, npmClient = "npm", npmClientArgs, mutex, hoist } = this.options;
+    const { registry, npmClient = "npm", npmClientArgs = [], mutex, hoist, nohoist } = this.options;
 
     if (npmClient === "yarn" && hoist) {
       throw new ValidationError(
@@ -62,7 +64,42 @@ class BootstrapCommand extends Command {
       );
     }
 
-    this.conf = npmConf({ registry });
+    // postinstall and prepare are commonly used to call `lerna bootstrap`,
+    // but we need to avoid recursive execution when `--hoist` is enabled
+    const { LERNA_EXEC_PATH = "leaf", LERNA_ROOT_PATH = "root" } = process.env;
+
+    if (LERNA_EXEC_PATH === LERNA_ROOT_PATH) {
+      this.logger.warn("bootstrap", "Skipping recursive execution");
+
+      return false;
+    }
+
+    if (hoist) {
+      let hoisting;
+
+      if (hoist === true) {
+        // lerna.json `hoist: true`
+        hoisting = ["**"];
+      } else {
+        // `--hoist ...` or lerna.json `hoist: [...]`
+        hoisting = [].concat(hoist);
+      }
+
+      if (nohoist) {
+        if (!Array.isArray(nohoist)) {
+          // `--nohoist` single
+          hoisting = hoisting.concat(`!${nohoist}`);
+        } else {
+          // `--nohoist` multiple or lerna.json `nohoist: [...]`
+          hoisting = hoisting.concat(nohoist.map(str => `!${str}`));
+        }
+      }
+
+      this.logger.verbose("hoist", "using globs %j", hoisting);
+      this.hoisting = hoisting;
+    }
+
+    this.runPackageLifecycle = createRunner({ registry });
     this.npmConfig = {
       registry,
       npmClient,
@@ -71,20 +108,73 @@ class BootstrapCommand extends Command {
     };
 
     if (npmClient === "npm" && this.options.ci && hasNpmVersion(">=5.7.0")) {
-      this.npmConfig.subCommand = "ci";
+      // never `npm ci` when hoisting
+      this.npmConfig.subCommand = this.hoisting ? "install" : "ci";
+
+      if (this.hoisting) {
+        // don't mutate lockfiles in CI
+        this.npmConfig.npmClientArgs.unshift("--no-save");
+      }
     }
 
     // lerna bootstrap ... -- <input>
     const doubleDashArgs = this.options["--"] || [];
     if (doubleDashArgs.length) {
-      this.npmConfig.npmClientArgs = [...(npmClientArgs || []), ...doubleDashArgs];
+      this.npmConfig.npmClientArgs = [...npmClientArgs, ...doubleDashArgs];
     }
+
+    // do not run any lifecycle scripts (if configured)
+    if (this.options.ignoreScripts) {
+      this.npmConfig.npmClientArgs.unshift("--ignore-scripts");
+    }
+
+    this.targetGraph = this.options.forceLocal
+      ? new PackageGraph(this.packageGraph.rawPackageList, "allDependencies", "forceLocal")
+      : this.packageGraph;
 
     let chain = Promise.resolve();
 
-    chain = chain.then(() => getFilteredPackages(this.packageGraph, this.execOpts, this.options));
+    chain = chain.then(() => {
+      if (this.options.scope) {
+        this.logger.notice("filter", "including %j", this.options.scope);
+      }
+
+      if (this.options.ignore) {
+        this.logger.notice("filter", "excluding %j", this.options.ignore);
+      }
+
+      if (this.options.since) {
+        this.logger.notice("filter", "changed since %j", this.options.since);
+      }
+
+      if (this.options.includeFilteredDependents) {
+        this.logger.notice("filter", "including filtered dependents");
+      }
+
+      if (this.options.includeFilteredDependencies) {
+        this.logger.notice("filter", "including filtered dependencies");
+      }
+
+      return getFilteredPackages(this.targetGraph, this.execOpts, this.options);
+    });
+
     chain = chain.then(filteredPackages => {
       this.filteredPackages = filteredPackages;
+
+      if (filteredPackages.length !== this.targetGraph.size) {
+        this.logger.warn("bootstrap", "Installing local packages that do not match filters from registry");
+
+        // an explicit --scope, --ignore, or --since should only symlink the targeted packages, no others
+        this.targetGraph = new PackageGraph(filteredPackages, "allDependencies", this.options.forceLocal);
+
+        // never automatically --save or modify lockfiles
+        this.npmConfig.npmClientArgs.unshift(npmClient === "yarn" ? "--pure-lockfile" : "--no-save");
+
+        // never attempt `npm ci`, it would always fail
+        if (this.npmConfig.subCommand === "ci") {
+          this.npmConfig.subCommand = "install";
+        }
+      }
     });
 
     chain = chain.then(() => {
@@ -112,26 +202,37 @@ class BootstrapCommand extends Command {
 
     const filteredLength = this.filteredPackages.length;
     const packageCountLabel = `${filteredLength} package${filteredLength > 1 ? "s" : ""}`;
+    const scriptsEnabled = this.options.ignoreScripts !== true;
 
     // root install does not need progress bar
     this.enableProgressBar();
     this.logger.info("", `Bootstrapping ${packageCountLabel}`);
 
-    const tasks = [
+    // conditional task queue
+    const tasks = [];
+
+    if (scriptsEnabled) {
+      tasks.push(() => this.runLifecycleInPackages("preinstall"));
+    }
+
+    tasks.push(
       () => this.getDependenciesToInstall(),
       result => this.installExternalDependencies(result),
-      () => this.symlinkPackages(),
-    ];
+      () => this.symlinkPackages()
+    );
 
-    if (!this.options.ignoreScripts) {
-      tasks.unshift(() => this.preinstallPackages());
-      // then install
-      // then symlink
+    if (scriptsEnabled) {
       tasks.push(
-        () => this.postinstallPackages(),
-        () => this.prepublishPackages(),
-        () => this.preparePackages()
+        () => this.runLifecycleInPackages("install"),
+        () => this.runLifecycleInPackages("postinstall")
       );
+
+      if (!this.options.ignorePrepublish) {
+        tasks.push(() => this.runLifecycleInPackages("prepublish"));
+      }
+
+      // "run on local npm install without any arguments", AFTER prepublish
+      tasks.push(() => this.runLifecycleInPackages("prepare"));
     }
 
     return pWaterfall(tasks).then(() => {
@@ -159,7 +260,7 @@ class BootstrapCommand extends Command {
 
     return Object.keys(rootDependencies).some(
       name =>
-        this.packageGraph.has(name) &&
+        this.targetGraph.has(name) &&
         npa.resolve(name, rootDependencies[name], this.project.rootPath).type === "directory"
     );
   }
@@ -171,60 +272,18 @@ class BootstrapCommand extends Command {
       return;
     }
 
-    const packagesWithScript = new Set(this.filteredPackages.filter(pkg => pkg.scripts[stage]));
-
-    if (!packagesWithScript.size) {
-      return;
-    }
-
     const tracker = this.logger.newItem(stage);
 
-    const mapPackageWithScript = pkg => {
-      if (packagesWithScript.has(pkg)) {
-        return runLifecycle(pkg, stage, this.conf).then(() => {
-          tracker.silly("lifecycle", "finished", pkg.name);
-          tracker.completeWork(1);
-        });
-      }
-    };
+    const mapPackageWithScript = pkg =>
+      this.runPackageLifecycle(pkg, stage).then(() => {
+        tracker.completeWork(1);
+      });
 
-    tracker.addWork(packagesWithScript.size);
+    tracker.addWork(this.filteredPackages.length);
 
     return pFinally(runParallelBatches(this.batchedPackages, this.concurrency, mapPackageWithScript), () =>
       tracker.finish()
     );
-  }
-
-  /**
-   * Run the "preinstall" NPM script in all bootstrapped packages
-   * @returns {Promise}
-   */
-  preinstallPackages() {
-    return this.runLifecycleInPackages("preinstall");
-  }
-
-  /**
-   * Run the "postinstall" NPM script in all bootstrapped packages
-   * @returns {Promise}
-   */
-  postinstallPackages() {
-    return this.runLifecycleInPackages("postinstall");
-  }
-
-  /**
-   * Run the "prepublish" NPM script in all bootstrapped packages
-   * @returns {Promise}
-   */
-  prepublishPackages() {
-    return this.runLifecycleInPackages("prepublish");
-  }
-
-  /**
-   * Run the "prepare" NPM script in all bootstrapped packages
-   * @returns {Promise}
-   */
-  preparePackages() {
-    return this.runLifecycleInPackages("prepare");
   }
 
   hoistedDirectory(dependency) {
@@ -248,32 +307,7 @@ class BootstrapCommand extends Command {
   getDependenciesToInstall() {
     // Configuration for what packages to hoist may be in lerna.json or it may
     // come in as command line options.
-    const { hoist, nohoist } = this.options;
     const rootPkg = this.project.manifest;
-
-    let hoisting;
-
-    if (hoist) {
-      if (hoist === true) {
-        // lerna.json `hoist: true`
-        hoisting = ["**"];
-      } else {
-        // `--hoist ...` or lerna.json `hoist: [...]`
-        hoisting = [].concat(hoist);
-      }
-
-      if (nohoist) {
-        if (!Array.isArray(nohoist)) {
-          // `--nohoist` single
-          hoisting = hoisting.concat(`!${nohoist}`);
-        } else {
-          // `--nohoist` multiple or lerna.json `nohoist: [...]`
-          hoisting = hoisting.concat(nohoist.map(str => `!${str}`));
-        }
-      }
-
-      this.logger.verbose("hoist", "using globs %j", hoisting);
-    }
 
     // This will contain entries for each hoistable dependency.
     const rootSet = new Set();
@@ -301,7 +335,7 @@ class BootstrapCommand extends Command {
      */
     const depsToInstall = new Map();
     const filteredNodes = new Map(
-      this.filteredPackages.map(pkg => [pkg.name, this.packageGraph.get(pkg.name)])
+      this.filteredPackages.map(pkg => [pkg.name, this.targetGraph.get(pkg.name)])
     );
 
     // collect root dependency versions
@@ -344,7 +378,7 @@ class BootstrapCommand extends Command {
     for (const [externalName, externalDependents] of depsToInstall) {
       let rootVersion;
 
-      if (hoisting && isHoistedPackage(externalName, hoisting)) {
+      if (this.hoisting && isHoistedPackage(externalName, this.hoisting)) {
         const commonVersion = Array.from(externalDependents.keys()).reduce((a, b) =>
           externalDependents.get(a).size > externalDependents.get(b).size ? a : b
         );
@@ -363,7 +397,7 @@ class BootstrapCommand extends Command {
         }
 
         const dependents = Array.from(externalDependents.get(rootVersion)).map(
-          leafName => this.packageGraph.get(leafName).pkg
+          leafName => this.targetGraph.get(leafName).pkg
         );
 
         // remove collection so leaves don't repeat it
@@ -395,7 +429,7 @@ class BootstrapCommand extends Command {
             );
           }
 
-          const leafNode = this.packageGraph.get(leafName);
+          const leafNode = this.targetGraph.get(leafName);
           const leafRecord = leaves.get(leafNode) || leaves.set(leafNode, new Set()).get(leafNode);
 
           // only install dependency if it's not already installed
@@ -444,8 +478,9 @@ class BootstrapCommand extends Command {
           tracker.info("hoist", "Installing hoisted dependencies into root");
         }
 
-        return npmInstall
-          .dependencies(rootPkg, depsToInstallInRoot, this.npmConfig)
+        const promise = npmInstall.dependencies(rootPkg, depsToInstallInRoot, this.npmConfig);
+
+        return pulseTillDone(promise)
           .then(() =>
             // Link binaries into dependent packages so npm scripts will
             // have access to them.
@@ -495,7 +530,7 @@ class BootstrapCommand extends Command {
         return pMap(
           candidates,
           dirPath =>
-            rimrafDir(dirPath).then(() => {
+            pulseTillDone(rimrafDir(dirPath)).then(() => {
               tracker.verbose("prune", dirPath);
               tracker.completeWork(1);
             }),
@@ -522,8 +557,9 @@ class BootstrapCommand extends Command {
       if (deps.some(({ isSatisfied }) => !isSatisfied)) {
         actions.push(() => {
           const dependencies = deps.map(({ dependency }) => dependency);
+          const promise = npmInstall.dependencies(leafNode.pkg, dependencies, leafNpmConfig);
 
-          return npmInstall.dependencies(leafNode.pkg, dependencies, leafNpmConfig).then(() => {
+          return pulseTillDone(promise).then(() => {
             tracker.verbose("installed leaf", leafNode.name);
             tracker.completeWork(1);
           });
@@ -546,7 +582,11 @@ class BootstrapCommand extends Command {
    * @returns {Promise}
    */
   symlinkPackages() {
-    return symlinkDependencies(this.filteredPackages, this.packageGraph, this.logger);
+    return symlinkDependencies(
+      this.filteredPackages,
+      this.targetGraph,
+      this.logger.newItem("bootstrap dependencies")
+    );
   }
 }
 

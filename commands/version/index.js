@@ -19,6 +19,7 @@ const collectUpdates = require("@lerna/collect-updates");
 const { createRunner } = require("@lerna/run-lifecycle");
 const batchPackages = require("@lerna/batch-packages");
 const ValidationError = require("@lerna/validation-error");
+const { createGitHubClient, parseGitRepo } = require("@lerna/github-client");
 
 const getCurrentBranch = require("./lib/get-current-branch");
 const gitAdd = require("./lib/git-add");
@@ -26,6 +27,7 @@ const gitCommit = require("./lib/git-commit");
 const gitPush = require("./lib/git-push");
 const gitTag = require("./lib/git-tag");
 const isBehindUpstream = require("./lib/is-behind-upstream");
+const remoteBranchExists = require("./lib/remote-branch-exists");
 const isBreakingChange = require("./lib/is-breaking-change");
 const isAnythingCommitted = require("./lib/is-anything-committed");
 const makePromptVersion = require("./lib/prompt-version");
@@ -62,6 +64,20 @@ class VersionCommand extends Command {
     this.pushToRemote = gitTagVersion && amend !== true && push;
     // never automatically push to remote when amending a commit
 
+    this.createReleases = this.pushToRemote && this.options.githubRelease;
+    this.releaseNotes = [];
+
+    if (this.createReleases && this.options.conventionalCommits !== true) {
+      throw new ValidationError(
+        "ERELEASE",
+        "To create a Github Release, you must enable --conventional-commits"
+      );
+    }
+
+    if (this.createReleases && this.options.changelog === false) {
+      throw new ValidationError("ERELEASE", "To create a Github Release, you cannot pass --no-changelog");
+    }
+
     this.gitOpts = {
       amend,
       commitHooks,
@@ -88,6 +104,16 @@ class VersionCommand extends Command {
 
     if (this.currentBranch === "HEAD") {
       throw new ValidationError("ENOGIT", "Detached git HEAD, please checkout a branch to choose versions.");
+    }
+
+    if (this.pushToRemote && !remoteBranchExists(this.gitRemote, this.currentBranch, this.execOpts)) {
+      throw new ValidationError(
+        "ENOREMOTEBRANCH",
+        dedent`
+          Branch '${this.currentBranch}' doesn't exist in remote '${this.gitRemote}'.
+          If this is a new branch, please make sure you push it to the remote first.
+        `
+      );
     }
 
     if (
@@ -135,7 +161,24 @@ class VersionCommand extends Command {
       this.packageGraph,
       this.execOpts,
       this.options
-    );
+    ).filter(node => {
+      if (!node.version) {
+        // a package may be unversioned only if it is private
+        if (node.pkg.private) {
+          this.logger.info("version", "Skipping unversioned private package %j", node.name);
+        } else {
+          throw new ValidationError(
+            "ENOVERSION",
+            dedent`
+              A version field is required in ${node.name}'s package.json file.
+              If you wish to keep the package unversioned, it must be made private.
+            `
+          );
+        }
+      }
+
+      return !!node.version;
+    });
 
     if (!this.updates.length) {
       this.logger.success(`No changed packages to ${this.composed ? "publish" : "version"}`);
@@ -145,6 +188,13 @@ class VersionCommand extends Command {
     }
 
     this.runPackageLifecycle = createRunner(this.options);
+
+    // don't execute recursively if run from a poorly-named script
+    this.runRootLifecycle = /^(pre|post)?version$/.test(process.env.npm_lifecycle_event)
+      ? stage => {
+          this.logger.warn("lifecycle", "Skipping root %j because it has already been called", stage);
+        }
+      : stage => this.runPackageLifecycle(this.project.manifest, stage);
 
     const tasks = [
       () => this.getVersionsForUpdates(),
@@ -176,6 +226,12 @@ class VersionCommand extends Command {
       tasks.push(() => this.gitPushToRemote());
     } else {
       this.logger.info("execute", "Skipping git push");
+    }
+
+    if (this.createReleases) {
+      tasks.push(() => this.createGitHubReleases());
+    } else {
+      this.logger.info("execute", "Skipping GitHub releases");
     }
 
     return pWaterfall(tasks).then(() => {
@@ -297,7 +353,7 @@ class VersionCommand extends Command {
     let highestVersion = this.project.version;
 
     versions.forEach(bump => {
-      if (semver.gt(bump, highestVersion)) {
+      if (bump && semver.gt(bump, highestVersion)) {
         highestVersion = bump;
       }
     });
@@ -361,7 +417,7 @@ class VersionCommand extends Command {
   }
 
   updatePackageVersions() {
-    const { conventionalCommits, changelogPreset } = this.options;
+    const { conventionalCommits, changelogPreset, changelog = true } = this.options;
     const independentVersions = this.project.isIndependent();
     const rootPath = this.project.manifest.location;
     const changedFiles = new Set();
@@ -375,10 +431,12 @@ class VersionCommand extends Command {
     // @see https://docs.npmjs.com/misc/scripts
 
     // exec preversion lifecycle in root (before all updates)
-    chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "preversion"));
+    chain = chain.then(() => this.runRootLifecycle("preversion"));
 
     const actions = [
-      pkg => this.runPackageLifecycle(pkg, "preversion"),
+      pkg => this.runPackageLifecycle(pkg, "preversion").then(() => pkg),
+      // manifest may be mutated by any previous lifecycle
+      pkg => pkg.refresh(),
       pkg => {
         // set new version
         pkg.version = this.updatesVersions.get(pkg.name);
@@ -400,10 +458,10 @@ class VersionCommand extends Command {
           return pkg;
         });
       },
-      pkg => this.runPackageLifecycle(pkg, "version"),
+      pkg => this.runPackageLifecycle(pkg, "version").then(() => pkg),
     ];
 
-    if (conventionalCommits) {
+    if (conventionalCommits && changelog) {
       // we can now generate the Changelog, based on the
       // the updated version that we're about to release.
       const type = independentVersions ? "independent" : "fixed";
@@ -413,9 +471,17 @@ class VersionCommand extends Command {
           changelogPreset,
           rootPath,
           tagPrefix: this.tagPrefix,
-        }).then(changelogLocation => {
+        }).then(({ logPath, newEntry }) => {
           // commit the updated changelog
-          changedFiles.add(changelogLocation);
+          changedFiles.add(logPath);
+
+          // add release notes
+          if (independentVersions) {
+            this.releaseNotes.push({
+              name: pkg.name,
+              notes: newEntry,
+            });
+          }
 
           return pkg;
         })
@@ -434,16 +500,22 @@ class VersionCommand extends Command {
     if (!independentVersions) {
       this.project.version = this.globalVersion;
 
-      if (conventionalCommits) {
+      if (conventionalCommits && changelog) {
         chain = chain.then(() =>
           ConventionalCommitUtilities.updateChangelog(this.project.manifest, "root", {
             changelogPreset,
             rootPath,
             tagPrefix: this.tagPrefix,
             version: this.globalVersion,
-          }).then(changelogLocation => {
+          }).then(({ logPath, newEntry }) => {
             // commit the updated changelog
-            changedFiles.add(changelogLocation);
+            changedFiles.add(logPath);
+
+            // add release notes
+            this.releaseNotes.push({
+              name: "fixed",
+              notes: newEntry,
+            });
           })
         );
       }
@@ -457,7 +529,7 @@ class VersionCommand extends Command {
     }
 
     // exec version lifecycle in root (after all updates)
-    chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "version"));
+    chain = chain.then(() => this.runRootLifecycle("version"));
 
     if (this.commitAndTag) {
       chain = chain.then(() => gitAdd(Array.from(changedFiles), this.execOpts));
@@ -485,7 +557,7 @@ class VersionCommand extends Command {
     );
 
     // run postversion, if set, in the root directory
-    chain = chain.then(() => this.runPackageLifecycle(this.project.manifest, "postversion"));
+    chain = chain.then(() => this.runRootLifecycle("postversion"));
 
     return chain;
   }
@@ -518,6 +590,36 @@ class VersionCommand extends Command {
     this.logger.info("git", "Pushing tags...");
 
     return gitPush(this.gitRemote, this.currentBranch, this.execOpts);
+  }
+
+  createGitHubReleases() {
+    this.logger.info("github", "Creating GitHub releases...");
+
+    const client = createGitHubClient();
+    const repo = parseGitRepo(this.options.gitRemote, this.execOpts);
+
+    return Promise.all(
+      this.releaseNotes.map(({ notes, name }) => {
+        const tag = name === "fixed" ? this.tags[0] : this.tags.find(t => t.startsWith(name));
+
+        /* istanbul ignore if */
+        if (!tag) {
+          return Promise.resolve();
+        }
+
+        const prereleaseParts = semver.prerelease(tag.replace(`${name}@`, "")) || [];
+
+        return client.repos.createRelease({
+          owner: repo.owner,
+          repo: repo.name,
+          tag_name: tag,
+          name: tag,
+          body: notes,
+          draft: false,
+          prerelease: prereleaseParts.length > 0,
+        });
+      })
+    );
   }
 }
 

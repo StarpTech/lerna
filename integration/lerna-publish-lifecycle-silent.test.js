@@ -31,12 +31,13 @@ version-package-1
 version-root
 postversion-package-1
 postversion-root
+prepublish-root
 prepare-root
 prepublishOnly-root
 prepack-root
-prepublishOnly-package-1
-prepublish-package-1
 prepare-package-1
+prepublishOnly-package-1
+prepack-package-1
 postpack-root
 postpublish-package-1
 postpublish-root

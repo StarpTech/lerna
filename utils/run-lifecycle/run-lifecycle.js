@@ -1,41 +1,107 @@
 "use strict";
 
 const log = require("npmlog");
-const npmLifecycle = require("npm-lifecycle");
+const runScript = require("npm-lifecycle");
+const figgyPudding = require("figgy-pudding");
 const npmConf = require("@lerna/npm-conf");
 
 module.exports = runLifecycle;
 module.exports.createRunner = createRunner;
 
-function runLifecycle(pkg, stage, opts) {
-  log.silly("run-lifecycle", stage, pkg.name);
+const LifecycleConfig = figgyPudding(
+  {
+    log: { default: log },
+    // provide aliases for some dash-cased props
+    "ignore-prepublish": {},
+    ignorePrepublish: "ignore-prepublish",
+    "ignore-scripts": {},
+    ignoreScripts: "ignore-scripts",
+    "node-options": {},
+    nodeOptions: "node-options",
+    "script-shell": {},
+    scriptShell: "script-shell",
+    "scripts-prepend-node-path": {},
+    scriptsPrependNodePath: "scripts-prepend-node-path",
+    "unsafe-perm": {
+      // when running scripts explicitly, assume that they're trusted
+      default: true,
+    },
+    unsafePerm: "unsafe-perm",
+  },
+  {
+    other() {
+      // open up the pudding
+      return true;
+    },
+  }
+);
 
-  const config = {};
+function runLifecycle(pkg, stage, _opts) {
+  // back-compat for @lerna/npm-conf instances
+  // https://github.com/isaacs/proto-list/blob/27764cd/proto-list.js#L14
+  if ("root" in _opts) {
+    // eslint-disable-next-line no-param-reassign
+    _opts = _opts.snapshot;
+  }
+
+  const opts = LifecycleConfig(_opts);
   const dir = pkg.location;
+  const config = {};
 
-  // https://github.com/isaacs/proto-list/blob/27764cd/proto-list.js#L29
-  for (const key of opts.keys) {
-    const val = opts.get(key);
+  if (opts.ignoreScripts) {
+    opts.log.verbose("lifecycle", "%j ignored in %j", stage, pkg.name);
 
-    if (val != null) {
+    return Promise.resolve();
+  }
+
+  if (!pkg.scripts || !pkg.scripts[stage]) {
+    opts.log.silly("lifecycle", "No script for %j in %j, continuing", stage, pkg.name);
+
+    return Promise.resolve();
+  }
+
+  if (stage === "prepublish" && opts.ignorePrepublish) {
+    opts.log.verbose("lifecycle", "%j ignored in %j", stage, pkg.name);
+
+    return Promise.resolve();
+  }
+
+  // https://github.com/zkat/figgy-pudding/blob/7d68bd3/index.js#L42-L64
+  for (const [key, val] of opts) {
+    // omit falsy values and circular objects
+    if (val != null && key !== "log" && key !== "logstream") {
       config[key] = val;
     }
   }
 
-  // env.npm_config_prefix should be the package directory
-  config.prefix = dir;
+  /* istanbul ignore else */
+  // eslint-disable-next-line no-underscore-dangle
+  if (pkg.__isLernaPackage) {
+    // To ensure npm-lifecycle creates the correct npm_package_* env vars,
+    // we must pass the _actual_ JSON instead of our fancy Package thingy
+    // eslint-disable-next-line no-param-reassign
+    pkg = pkg.toJSON();
+  }
 
   // TODO: remove pkg._id when npm-lifecycle no longer relies on it
   pkg._id = `${pkg.name}@${pkg.version}`; // eslint-disable-line
 
-  return npmLifecycle(pkg, stage, dir, {
+  opts.log.silly("lifecycle", "%j starting in %j", stage, pkg.name);
+
+  return runScript(pkg, stage, dir, {
     config,
     dir,
     failOk: false,
-    log,
-    unsafePerm: true,
+    log: opts.log,
+    // bring along camelCased aliases
+    nodeOptions: opts.nodeOptions,
+    scriptShell: opts.scriptShell,
+    scriptsPrependNodePath: opts.scriptsPrependNodePath,
+    unsafePerm: opts.unsafePerm,
   }).then(
-    () => pkg,
+    () => {
+      opts.log.silly("lifecycle", "%j finished in %j", stage, pkg.name);
+    },
     err => {
       // propagate the exit code
       const exitCode = err.errno || 1;
@@ -57,13 +123,7 @@ function runLifecycle(pkg, stage, opts) {
 }
 
 function createRunner(commandOptions) {
-  const cfg = npmConf(commandOptions);
+  const cfg = npmConf(commandOptions).snapshot;
 
-  return (pkg, stage) => {
-    if (pkg.scripts && pkg.scripts[stage]) {
-      return runLifecycle(pkg, stage, cfg);
-    }
-
-    return Promise.resolve(pkg);
-  };
+  return (pkg, stage) => runLifecycle(pkg, stage, cfg);
 }

@@ -1,9 +1,8 @@
 # `@lerna/exec`
 
-> Run an arbitrary command in each package
+> Execute an arbitrary command in each package
 
 ## Usage
-
 
 ```sh
 $ lerna exec -- <command> [..args] # runs the command in all packages
@@ -73,3 +72,8 @@ $ lerna exec --no-bail <command>
 
 By default, `lerna exec` will exit with an error if _any_ execution returns a non-zero exit code.
 Pass `--no-bail` to disable this behavior, executing in _all_ packages regardless of exit code.
+
+### `--no-prefix`
+
+Disable package name prefixing when output is streaming (`--stream` _or_ `--parallel`).
+This option can be useful when piping results to other processes, such as editor plugins.

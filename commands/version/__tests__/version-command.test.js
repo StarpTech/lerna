@@ -4,6 +4,7 @@
 jest.mock("../lib/git-push");
 jest.mock("../lib/is-anything-committed");
 jest.mock("../lib/is-behind-upstream");
+jest.mock("../lib/remote-branch-exists");
 
 const fs = require("fs-extra");
 const path = require("path");
@@ -18,6 +19,7 @@ const checkWorkingTree = require("@lerna/check-working-tree");
 const libPush = require("../lib/git-push");
 const isAnythingCommitted = require("../lib/is-anything-committed");
 const isBehindUpstream = require("../lib/is-behind-upstream");
+const remoteBranchExists = require("../lib/remote-branch-exists");
 
 // helpers
 const loggingOutput = require("@lerna-test/logging-output");
@@ -48,7 +50,9 @@ describe("VersionCommand", () => {
   describe("normal mode", () => {
     it("versions changed packages", async () => {
       const testDir = await initFixture("normal");
-      await lernaVersion(testDir)();
+      // when --conventional-commits is absent,
+      // --no-changelog should have _no_ effect
+      await lernaVersion(testDir)("--no-changelog");
 
       expect(checkWorkingTree).toHaveBeenCalled();
 
@@ -80,6 +84,20 @@ describe("VersionCommand", () => {
       } catch (err) {
         expect(err.message).toMatch("independent");
       }
+    });
+
+    it("throws an error when remote branch doesn't exist", async () => {
+      remoteBranchExists.mockReturnValueOnce(false);
+
+      const testDir = await initFixture("normal");
+
+      try {
+        await lernaVersion(testDir)();
+      } catch (err) {
+        expect(err.message).toMatch("doesn't exist in remote");
+      }
+
+      expect.assertions(1);
     });
 
     it("throws an error when uncommitted changes are present", async () => {
@@ -207,7 +225,7 @@ describe("VersionCommand", () => {
 
       expect(writePkg.updatedManifest("package-1")).toMatchSnapshot("gitHead");
 
-      expect(libPush).not.toBeCalled();
+      expect(libPush).not.toHaveBeenCalled();
 
       const logMessages = loggingOutput("info");
       expect(logMessages).toContain("Skipping git tag/commit");
@@ -254,7 +272,7 @@ describe("VersionCommand", () => {
       await fs.outputFile(path.join(testDir, "packages/package-1/hello.js"), "world");
       await lernaVersion(testDir)("--no-git-tag-version");
 
-      expect(checkWorkingTree).not.toBeCalled();
+      expect(checkWorkingTree).not.toHaveBeenCalled();
 
       const logMessages = loggingOutput("warn");
       expect(logMessages).toContain("Skipping working tree validation, proceed at your own risk");
@@ -272,7 +290,7 @@ describe("VersionCommand", () => {
       const patch = await showCommit(testDir);
       expect(patch).toMatchSnapshot();
 
-      expect(libPush).not.toBeCalled();
+      expect(libPush).not.toHaveBeenCalled();
 
       const logMessages = loggingOutput("info");
       expect(logMessages).toContain("Skipping git push");
@@ -348,8 +366,8 @@ describe("VersionCommand", () => {
       const testDir = await initFixture("normal");
       await lernaVersion(testDir)("--yes", "patch");
 
-      expect(PromptUtilities.select).not.toBeCalled();
-      expect(PromptUtilities.confirm).not.toBeCalled();
+      expect(PromptUtilities.select).not.toHaveBeenCalled();
+      expect(PromptUtilities.confirm).not.toHaveBeenCalled();
 
       const message = await getCommitMessage(testDir);
       expect(message).toBe("v1.0.1");
@@ -419,7 +437,7 @@ describe("VersionCommand", () => {
       const message = await getCommitMessage(testDir);
       expect(message).toBe("previous");
 
-      expect(checkWorkingTree).not.toBeCalled();
+      expect(checkWorkingTree).not.toHaveBeenCalled();
     });
 
     it("ignores custom messages", async () => {
@@ -468,6 +486,24 @@ describe("VersionCommand", () => {
     });
   });
 
+  describe("unversioned packages", () => {
+    it("exits with an error for non-private packages with no version", async () => {
+      const testDir = await initFixture("not-versioned");
+      try {
+        await lernaVersion(testDir)();
+      } catch (err) {
+        expect(err.prefix).toBe("ENOVERSION");
+        expect(err.message).toMatch("A version field is required in package-3's package.json file.");
+      }
+    });
+
+    it("ignores private packages with no version", async () => {
+      const testDir = await initFixture("not-versioned-private");
+      await lernaVersion(testDir)();
+      expect(Object.keys(writePkg.updatedVersions())).not.toContain("package-4");
+    });
+  });
+
   it("exits with an error when no commits are present", async () => {
     expect.assertions(2);
     const testDir = await initFixture("normal", false);
@@ -485,7 +521,7 @@ describe("VersionCommand", () => {
   });
 
   it("exits with an error when git HEAD is detached", async () => {
-    const cwd = await initFixture("normal-no-inter-dependencies");
+    const cwd = await initFixture("no-interdependencies");
 
     try {
       const sha = await execa.stdout("git", ["rev-parse", "HEAD"], { cwd });
@@ -563,6 +599,19 @@ describe("VersionCommand", () => {
         "package-4": "file:../package-4",
         "package-6": "file:../package-6",
       });
+    });
+  });
+
+  describe("--include-merged-tags", () => {
+    it("accepts --include-merged-tags", async () => {
+      const testDir = await initFixture("normal");
+      await lernaVersion(testDir)("--include-merged-tags", "--yes", "patch");
+
+      expect(PromptUtilities.select).not.toHaveBeenCalled();
+      expect(PromptUtilities.confirm).not.toHaveBeenCalled();
+
+      const message = await getCommitMessage(testDir);
+      expect(message).toBe("v1.0.1");
     });
   });
 });

@@ -30,7 +30,8 @@ describe("npm-install", () => {
         {
           name: "test-npm-install",
         },
-        path.normalize("/test/npm-install-deps")
+        path.normalize("/test/npm-install-promise"),
+        path.normalize("/test")
       );
 
       await npmInstall(pkg, {
@@ -42,7 +43,15 @@ describe("npm-install", () => {
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith(
         "yarn",
         ["install", "--mutex", "file:foo", "--non-interactive", "--no-optional"],
-        { cwd: pkg.location, env: {}, pkg, stdio: "pipe" }
+        {
+          cwd: pkg.location,
+          env: {
+            LERNA_EXEC_PATH: pkg.location,
+            LERNA_ROOT_PATH: pkg.rootPath,
+          },
+          pkg,
+          stdio: "pipe",
+        }
       );
     });
 
@@ -53,19 +62,20 @@ describe("npm-install", () => {
         {
           name: "test-npm-install",
         },
-        path.normalize("/test/npm-install-deps")
+        path.normalize("/test/npm-install-stdio")
       );
 
       await npmInstall(pkg, {
         stdio: "inherit",
       });
 
-      expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["install"], {
-        cwd: pkg.location,
-        env: {},
-        pkg,
-        stdio: "inherit",
-      });
+      expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith(
+        "npm",
+        ["install"],
+        expect.objectContaining({
+          stdio: "inherit",
+        })
+      );
     });
 
     it("does not swallow errors", async () => {
@@ -77,7 +87,7 @@ describe("npm-install", () => {
         {
           name: "test-npm-install-error",
         },
-        path.normalize("/test/npm/install/error")
+        path.normalize("/test/npm-install-error")
       );
 
       try {
@@ -92,7 +102,7 @@ describe("npm-install", () => {
           ["install", "--non-interactive"],
           {
             cwd: pkg.location,
-            env: {},
+            env: expect.any(Object),
             pkg,
             stdio: "pipe",
           }
@@ -121,11 +131,25 @@ describe("npm-install", () => {
             exact: "1.0.0", // will be removed
             "local-dev-dependency": "^1.0.0",
           },
+          optionalDependencies: {
+            "@scoped/others": "1.0.0", // will be removed
+            caret: "^1.0.0",
+            "local-dependency": "^1.0.0",
+          },
+          bundledDependencies: ["local-dependency", "@scoped/exact", "others"],
+          bundleDependencies: ["local-dependency", "@scoped/exact", "others"],
         },
         path.normalize("/test/npm-install-deps")
       );
       const backupManifest = `${pkg.manifestLocation}.lerna_backup`;
-      const dependencies = ["@scoped/caret@^2.0.0", "@scoped/exact@2.0.0", "caret@^1.0.0", "exact@1.0.0"];
+      const dependencies = [
+        "@scoped/caret@^2.0.0",
+        "@scoped/exact@2.0.0",
+        "caret@^1.0.0",
+        "exact@1.0.0",
+        "@scoped/others@1.0.0",
+        "others@1.0.0",
+      ];
 
       await npmInstall.dependencies(pkg, dependencies, {});
 
@@ -144,10 +168,18 @@ describe("npm-install", () => {
           caret: "^1.0.0",
           // removed local-dev-dependency
         },
+        optionalDependencies: {
+          "@scoped/others": "1.0.0",
+          // removed caret, local-dependency
+        },
+        bundledDependencies: [/* removed local-dependency */ "others"],
+        bundleDependencies: [
+          /* removed  */
+        ],
       });
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["install"], {
         cwd: pkg.location,
-        env: {},
+        env: expect.any(Object),
         pkg,
         stdio: "pipe",
       });
@@ -188,9 +220,9 @@ describe("npm-install", () => {
       });
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["install"], {
         cwd: pkg.location,
-        env: {
+        env: expect.objectContaining({
           npm_config_registry: config.registry,
-        },
+        }),
         pkg,
         stdio: "pipe",
       });
@@ -230,7 +262,7 @@ describe("npm-install", () => {
       });
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["install", "--global-style"], {
         cwd: pkg.location,
-        env: {},
+        env: expect.any(Object),
         pkg,
         stdio: "pipe",
       });
@@ -266,7 +298,7 @@ describe("npm-install", () => {
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith(
         "yarn",
         ["install", "--mutex", "network:12345", "--non-interactive"],
-        { cwd: pkg.location, env: {}, pkg, stdio: "pipe" }
+        { cwd: pkg.location, env: expect.any(Object), pkg, stdio: "pipe" }
       );
     });
 
@@ -307,7 +339,7 @@ describe("npm-install", () => {
         ["install", "--production", "--no-optional"],
         {
           cwd: pkg.location,
-          env: {},
+          env: expect.any(Object),
           pkg,
           stdio: "pipe",
         }
@@ -350,7 +382,7 @@ describe("npm-install", () => {
       });
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["install", "--global-style"], {
         cwd: pkg.location,
-        env: {},
+        env: expect.any(Object),
         pkg,
         stdio: "pipe",
       });
@@ -390,7 +422,7 @@ describe("npm-install", () => {
       });
       expect(ChildProcessUtilities.exec).toHaveBeenLastCalledWith("npm", ["ci"], {
         cwd: pkg.location,
-        env: {},
+        env: expect.any(Object),
         pkg,
         stdio: "pipe",
       });
@@ -408,7 +440,7 @@ describe("npm-install", () => {
 
       await npmInstall.dependencies(pkg, dependencies, {});
 
-      expect(ChildProcessUtilities.exec).not.toBeCalled();
+      expect(ChildProcessUtilities.exec).not.toHaveBeenCalled();
     });
 
     it("defaults temporary dependency versions to '*'", async () => {

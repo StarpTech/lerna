@@ -9,15 +9,13 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/lerna"><img alt="NPM Status" src="https://img.shields.io/npm/v/lerna.svg?style=flat"></a>
   <a href="https://travis-ci.org/lerna/lerna"><img alt="Travis Status" src="https://img.shields.io/travis/lerna/lerna/master.svg?style=flat&label=travis"></a>
-  <a href="https://ci.appveyor.com/project/lerna/lerna/branch/master"><img alt="Appveyor Status" src="https://img.shields.io/appveyor/ci/lerna/lerna/master.svg"></a>
-  <a href="https://slack.lernajs.io/"><img alt="Slack Status" src="https://slack.lernajs.io/badge.svg"></a>
 </p>
 
-* [About](#about)
-* [Getting Started](#getting-started)
-* [How It Works](#how-it-works)
-* [Troubleshooting](#troubleshooting)
-* Commands
+- [About](#about)
+- [Getting Started](#getting-started)
+- [How It Works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- Commands
   - [`lerna publish`](./commands/publish#readme)
   - [`lerna version`](./commands/version#readme)
   - [`lerna bootstrap`](./commands/bootstrap#readme)
@@ -32,10 +30,10 @@
   - [`lerna import`](./commands/import#readme)
   - [`lerna link`](./commands/link#readme)
   - [`lerna create`](./commands/create#readme)
-* [Concepts](#concepts)
-* [Lerna.json](#lernajson)
-* [Global Flags](./core/global-options)
-* [Filter Flags](./core/filter-options)
+- [Concepts](#concepts)
+- [Lerna.json](#lernajson)
+- [Global Flags](./core/global-options)
+- [Filter Flags](./core/filter-options)
 
 ## About
 
@@ -134,39 +132,40 @@ Lerna will log to a `lerna-debug.log` file (same as `npm-debug.log`) when it enc
 
 Lerna also has support for [scoped packages](https://docs.npmjs.com/misc/scope).
 
-Running `lerna` without arguments will show all commands/options.
+Run `lerna --help` to see all available commands and options.
 
 ### lerna.json
 
 ```json
 {
   "version": "1.1.3",
+  "npmClient": "npm",
   "command": {
     "publish": {
-      "ignoreChanges": [
-        "ignored-file",
-        "*.md"
-      ]
+      "ignoreChanges": ["ignored-file", "*.md"],
+      "message": "chore(release): publish"
     },
     "bootstrap": {
       "ignore": "component-*",
-      "npmClientArgs": ["--no-package-lock"]      
+      "npmClientArgs": ["--no-package-lock"]
     }
   },
   "packages": ["packages/*"]
 }
 ```
 
-* `version`: the current version of the repository.
-* `command.publish.ignoreChanges`: an array of globs that won't be included in `lerna changed/publish`. Use this to prevent publishing a new version unnecessarily for changes, such as fixing a `README.md` typo.
-* `command.bootstrap.ignore`: an array of globs that won't be bootstrapped when running the `lerna bootstrap` command.
-* `command.bootstrap.npmClientArgs`: array of strings that will be passed as arguments directly to `npm install` during the `lerna bootstrap` command.
-* `command.bootstrap.scope`: an array of globs that restricts which packages will be bootstrapped when running the `lerna bootstrap` command.
-* `packages`: Array of globs to use as package locations.
+- `version`: the current version of the repository.
+- `npmClient`: an option to specify a specific client to run commands with (this can also be specified on a per command basis). Change to `"yarn"` to run all commands with yarn. Defaults to "npm".
+- `command.publish.ignoreChanges`: an array of globs that won't be included in `lerna changed/publish`. Use this to prevent publishing a new version unnecessarily for changes, such as fixing a `README.md` typo.
+- `command.publish.message`: a custom commit message when performing version updates for publication. See [@lerna/version](commands/version#--message-msg) for more details. 
+- `command.bootstrap.ignore`: an array of globs that won't be bootstrapped when running the `lerna bootstrap` command.
+- `command.bootstrap.npmClientArgs`: array of strings that will be passed as arguments directly to `npm install` during the `lerna bootstrap` command.
+- `command.bootstrap.scope`: an array of globs that restricts which packages will be bootstrapped when running the `lerna bootstrap` command.
+- `packages`: Array of globs to use as package locations.
 
-The packages config in lerna.json is a list of globs that match directories containing a package.json, which is how lerna recognizes "leaf" packages (vs the "root" package.json, which is intended to manage the dev dependencies and scripts for the entire repo).
+The packages config in `lerna.json` is a list of globs that match directories containing a `package.json`, which is how lerna recognizes "leaf" packages (vs the "root" `package.json`, which is intended to manage the dev dependencies and scripts for the entire repo).
 
-By default, lerna initializes the packages list as `["packages/*"]`, but you can also use another directory such as `["modules/*"]`, or `["package1", "package2"]`. The globs defined are relative to the directory that lerna.json lives in, which is usually the repository root. The only restriction is that you can't directly nest package locations, but this is a restriction shared by "normal" npm packages as well.
+By default, lerna initializes the packages list as `["packages/*"]`, but you can also use another directory such as `["modules/*"]`, or `["package1", "package2"]`. The globs defined are relative to the directory that `lerna.json` lives in, which is usually the repository root. The only restriction is that you can't directly nest package locations, but this is a restriction shared by "normal" npm packages as well.
 
 For example, `["packages/*", "src/**"]` matches this tree:
 
@@ -205,14 +204,15 @@ Locating leaf packages under `packages/*` is considered a "best-practice", but i
 
 ### Common `devDependencies`
 
-Most `devDependencies` can be pulled up to the root of a Lerna repo.
+Most `devDependencies` can be pulled up to the root of a Lerna repo with `lerna link convert`
 
-This has a few benefits:
+The above command will automatically hoist things and use relative `file:` specifiers.
 
-* All packages use the same version of a given dependency
-* Can keep dependencies at the root up-to-date with an automated tool such as [GreenKeeper](https://greenkeeper.io/)
-* Dependency installation time is reduced
-* Less storage is needed
+Hoisting has a few benefits:
+- All packages use the same version of a given dependency
+- Can keep dependencies at the root up-to-date with an automated tool such as [GreenKeeper](https://greenkeeper.io/)
+- Dependency installation time is reduced
+- Less storage is needed
 
 Note that `devDependencies` providing "binary" executables that are used by
 npm scripts still need to be installed directly in each package where they're
@@ -258,8 +258,8 @@ Please note that lerna does _not_ perform the actual splitting of git history in
 
 In the example above,
 
-* `lerna bootstrap` will properly symlink `pkg-2` into `pkg-1`.
-* `lerna publish` will update the committish (`#v1.0.0`) in `pkg-1` when `pkg-2` changes.
+- `lerna bootstrap` will properly symlink `pkg-2` into `pkg-1`.
+- `lerna publish` will update the committish (`#v1.0.0`) in `pkg-1` when `pkg-2` changes.
 
 ### README Badge
 

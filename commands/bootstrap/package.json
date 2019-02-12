@@ -1,6 +1,6 @@
 {
   "name": "@lerna/bootstrap",
-  "version": "3.4.1",
+  "version": "3.11.0",
   "description": "Link local packages together and install remaining package dependencies",
   "keywords": [
     "lerna",
@@ -39,8 +39,9 @@
     "@lerna/command": "file:../../core/command",
     "@lerna/filter-options": "file:../../core/filter-options",
     "@lerna/has-npm-version": "file:../../utils/has-npm-version",
-    "@lerna/npm-conf": "file:../../utils/npm-conf",
     "@lerna/npm-install": "file:../../utils/npm-install",
+    "@lerna/package-graph": "file:../../core/package-graph",
+    "@lerna/pulse-till-done": "file:../../utils/pulse-till-done",
     "@lerna/rimraf-dir": "file:../../utils/rimraf-dir",
     "@lerna/run-lifecycle": "file:../../utils/run-lifecycle",
     "@lerna/run-parallel-batches": "file:../../utils/run-parallel-batches",
@@ -50,7 +51,7 @@
     "dedent": "^0.7.0",
     "get-port": "^3.2.0",
     "multimatch": "^2.1.0",
-    "npm-package-arg": "^6.0.0",
+    "npm-package-arg": "^6.1.0",
     "npmlog": "^4.1.2",
     "p-finally": "^1.0.0",
     "p-map": "^1.2.0",

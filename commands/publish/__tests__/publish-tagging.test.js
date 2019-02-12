@@ -8,6 +8,7 @@ jest.mock("../lib/get-npm-username");
 jest.mock("../../version/lib/git-push");
 jest.mock("../../version/lib/is-anything-committed");
 jest.mock("../../version/lib/is-behind-upstream");
+jest.mock("../../version/lib/remote-branch-exists");
 
 // mocked modules
 const collectUpdates = require("@lerna/collect-updates");
@@ -20,34 +21,78 @@ const initFixture = require("@lerna-test/init-fixture")(__dirname);
 // test command
 const lernaPublish = require("@lerna-test/command-runner")(require("../command"));
 
-test("publish --npm-tag", async () => {
+test("publish --dist-tag next", async () => {
+  const cwd = await initFixture("normal");
+
+  collectUpdates.setUpdated(cwd, "package-1");
+
+  await lernaPublish(cwd)("--dist-tag", "next");
+
+  expect(npmPublish.registry.get("package-1")).toBe("next");
+  expect(npmDistTag.remove).not.toHaveBeenCalled();
+});
+
+test("publish --dist-tag nightly --canary", async () => {
+  const cwd = await initFixture("normal");
+
+  collectUpdates.setUpdated(cwd, "package-2");
+
+  await lernaPublish(cwd)("--dist-tag", "nightly", "--canary");
+
+  expect(npmPublish.registry.get("package-2")).toBe("nightly");
+  expect(npmDistTag.remove).not.toHaveBeenCalled();
+});
+
+test("publish --npm-tag deprecated", async () => {
   const cwd = await initFixture("normal");
 
   collectUpdates.setUpdated(cwd, "package-3");
 
-  await lernaPublish(cwd)("--npm-tag", "custom");
+  await lernaPublish(cwd)("--npm-tag", "deprecated");
 
-  expect(npmPublish.registry.get("package-3")).toBe("custom");
-  expect(npmDistTag.check).not.toBeCalled();
+  expect(npmPublish.registry.get("package-3")).toBe("deprecated");
+  expect(npmDistTag.remove).not.toHaveBeenCalled();
 });
 
 test("publish --temp-tag", async () => {
-  const cwd = await initFixture("normal");
+  const cwd = await initFixture("integration");
 
-  collectUpdates.setUpdated(cwd, "package-4");
+  await lernaPublish(cwd)("--temp-tag");
 
-  await lernaPublish(cwd)("--temp-tag", "--registry", "test-registry");
+  expect(npmPublish.registry).toMatchInlineSnapshot(`
+Map {
+  "@integration/package-1" => "lerna-temp",
+  "@integration/package-2" => "lerna-temp",
+}
+`);
 
-  expect(npmPublish.registry.get("package-4")).toBe("lerna-temp");
+  const conf = expect.objectContaining({
+    tag: "latest",
+  });
 
-  expect(npmDistTag.remove).toHaveBeenLastCalledWith(
-    expect.objectContaining({ name: "package-4" }),
-    "lerna-temp",
-    expect.objectContaining({ registry: "test-registry" })
-  );
-  expect(npmDistTag.add).toHaveBeenLastCalledWith(
-    expect.objectContaining({ name: "package-4", version: "1.0.1" }),
-    "latest",
-    expect.objectContaining({ registry: "test-registry" })
-  );
+  expect(npmDistTag.remove).toHaveBeenCalledWith("@integration/package-1@1.0.1", "lerna-temp", conf);
+  expect(npmDistTag.remove).toHaveBeenCalledWith("@integration/package-2@1.0.1", "lerna-temp", conf);
+
+  expect(npmDistTag.add).toHaveBeenCalledWith("@integration/package-1@1.0.1", "CUSTOM", conf); // <--
+  expect(npmDistTag.add).toHaveBeenCalledWith("@integration/package-2@1.0.1", "latest", conf);
+});
+
+test("publish --dist-tag beta --temp-tag", async () => {
+  const cwd = await initFixture("integration");
+
+  await lernaPublish(cwd)("--dist-tag", "beta", "--temp-tag");
+
+  expect(npmPublish.registry).toMatchInlineSnapshot(`
+Map {
+  "@integration/package-1" => "lerna-temp",
+  "@integration/package-2" => "lerna-temp",
+}
+`);
+
+  const conf = expect.objectContaining({
+    tag: "beta",
+  });
+
+  expect(npmDistTag.add).toHaveBeenCalledWith("@integration/package-1@1.0.1", "beta", conf); // <--
+  expect(npmDistTag.add).toHaveBeenCalledWith("@integration/package-2@1.0.1", "beta", conf);
 });

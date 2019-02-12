@@ -4,6 +4,7 @@
 jest.mock("../lib/git-push");
 jest.mock("../lib/is-anything-committed");
 jest.mock("../lib/is-behind-upstream");
+jest.mock("../lib/remote-branch-exists");
 
 const path = require("path");
 
@@ -26,7 +27,7 @@ describe("version bump", () => {
     const testDir = await initFixture("normal");
     await lernaVersion(testDir)("1.0.1-beta.25");
 
-    expect(PromptUtilities.select).not.toBeCalled();
+    expect(PromptUtilities.select).not.toHaveBeenCalled();
 
     const message = await getCommitMessage(testDir);
     expect(message).toBe("v1.0.1-beta.25");
@@ -64,7 +65,7 @@ describe("version bump", () => {
     const testDir = await initFixture("normal");
     await lernaVersion(testDir)("minor");
 
-    expect(PromptUtilities.select).not.toBeCalled();
+    expect(PromptUtilities.select).not.toHaveBeenCalled();
 
     const message = await getCommitMessage(testDir);
     expect(message).toBe("v1.1.0");

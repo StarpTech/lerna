@@ -1,5 +1,6 @@
 "use strict";
 
+const log = require("npmlog");
 const versionCommand = require("@lerna/version/command");
 
 /**
@@ -23,14 +24,14 @@ exports.builder = yargs => {
       requiresArg: true,
       defaultDescription: "alpha",
     },
-    "npm-tag": {
-      describe: "Publish packages with the specified npm dist-tag",
+    contents: {
+      describe: "Subdirectory to publish. Must apply to ALL packages.",
       type: "string",
       requiresArg: true,
+      defaultDescription: ".",
     },
-    "npm-client": {
-      defaultDescription: "npm",
-      describe: "Executable used to publish dependencies (npm, yarn, pnpm, ...)",
+    "dist-tag": {
+      describe: "Publish packages with the specified npm dist-tag",
       type: "string",
       requiresArg: true,
     },
@@ -43,25 +44,57 @@ exports.builder = yargs => {
       describe: "Execute ./scripts/prepublish.js and ./scripts/postpublish.js, relative to package root.",
       type: "boolean",
     },
+    "no-git-reset": {
+      describe: "Do not reset changes to working tree after publishing is complete.",
+      type: "boolean",
+    },
+    "git-reset": {
+      // proxy for --no-git-reset
+      hidden: true,
+      type: "boolean",
+    },
     "temp-tag": {
       describe: "Create a temporary tag while publishing.",
       type: "boolean",
     },
+    "no-verify-access": {
+      describe: "Do not verify package read-write access for current npm user.",
+      type: "boolean",
+    },
     "verify-access": {
-      describe: "Verify package read-write access for current npm user.\nPass --no-verify-access to disable.",
-      type: "boolean",
-      defaultDescription: "true",
-    },
-    y: {
-      describe: "Skip all confirmation prompts.",
-      alias: "yes",
+      // proxy for --no-verify-access
+      hidden: true,
       type: "boolean",
     },
+    // y: {
+    //   describe: "Skip all confirmation prompts.",
+    //   alias: "yes",
+    //   type: "boolean",
+    // },
   };
 
-  return composeVersionOptions(yargs)
-    .options(opts)
-    .group(Object.keys(opts), "Command Options:")
+  composeVersionOptions(yargs);
+
+  yargs.options(opts);
+
+  // "unhide" duplicate options
+  const { hiddenOptions } = yargs.getOptions();
+  const sharedKeys = ["preid", "y"];
+
+  for (const sharedKey of sharedKeys) {
+    hiddenOptions.splice(hiddenOptions.findIndex(k => k === sharedKey), 1);
+  }
+
+  yargs.group(Object.keys(opts).concat(sharedKeys), "Command Options:");
+
+  return yargs
+    .option("npm-tag", {
+      // TODO: remove in next major release
+      hidden: true,
+      conflicts: "dist-tag",
+      type: "string",
+      requiresArg: true,
+    })
     .option("verify-registry", {
       // TODO: remove in next major release
       hidden: true,
@@ -72,6 +105,19 @@ exports.builder = yargs => {
       // deprecation notice handled in initialize()
       hidden: true,
       type: "boolean",
+    })
+    .check(argv => {
+      /* eslint-disable no-param-reassign */
+      if (argv.npmTag) {
+        argv.distTag = argv.npmTag;
+        argv["dist-tag"] = argv.npmTag;
+        delete argv.npmTag;
+        delete argv["npm-tag"];
+        log.warn("deprecated", "--npm-tag has been renamed --dist-tag");
+      }
+      /* eslint-enable no-param-reassign */
+
+      return argv;
     });
 };
 
@@ -80,7 +126,7 @@ exports.handler = function handler(argv) {
 };
 
 function composeVersionOptions(yargs) {
-  versionCommand.addBumpPositional(yargs, ["from-git"]);
+  versionCommand.addBumpPositional(yargs, ["from-git", "from-package"]);
   versionCommand.builder(yargs, "publish");
 
   return yargs;

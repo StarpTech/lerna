@@ -9,6 +9,7 @@ const ChildProcessUtilities = require("@lerna/child-process");
 const Command = require("@lerna/command");
 const PromptUtilities = require("@lerna/prompt");
 const ValidationError = require("@lerna/validation-error");
+const pulseTillDone = require("@lerna/pulse-till-done");
 
 module.exports = factory;
 
@@ -60,7 +61,14 @@ class ImportCommand extends Command {
     }
 
     // Compute a target directory relative to the Lerna root
-    const targetDir = path.join(this.getTargetBase(), externalRepoBase);
+    const targetBase = this.getTargetBase();
+    if (this.getPackageDirectories().indexOf(targetBase) === -1) {
+      throw new ValidationError(
+        "EDESTDIR",
+        `--dest does not match with the package directories: ${this.getPackageDirectories()}`
+      );
+    }
+    const targetDir = path.join(targetBase, externalRepoBase);
 
     // Compute a target directory relative to the Git root
     const gitRepoRoot = this.getWorkspaceRoot();
@@ -105,13 +113,16 @@ class ImportCommand extends Command {
     return PromptUtilities.confirm("Are you sure you want to import these commits onto the current branch?");
   }
 
+  getPackageDirectories() {
+    return this.project.packageConfigs.filter(p => p.endsWith("*")).map(p => path.dirname(p));
+  }
+
   getTargetBase() {
-    return (
-      this.project.packageConfigs
-        .filter(p => path.basename(p) === "*")
-        .map(p => path.dirname(p))
-        .shift() || "packages"
-    );
+    if (this.options.dest) {
+      return this.options.dest;
+    }
+
+    return this.getPackageDirectories().shift() || "packages";
   }
 
   getCurrentSHA() {
@@ -192,7 +203,7 @@ class ImportCommand extends Command {
 
       proc.stdin.end(patch);
 
-      return proc
+      return pulseTillDone(proc)
         .then(() => {
           tracker.completeWork(1);
         })

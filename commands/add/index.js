@@ -4,7 +4,7 @@ const dedent = require("dedent");
 const npa = require("npm-package-arg");
 const pMap = require("p-map");
 const path = require("path");
-const pacote = require("pacote");
+const getManifest = require("pacote/manifest");
 const semver = require("semver");
 
 const Command = require("@lerna/command");
@@ -50,6 +50,14 @@ class AddCommand extends Command {
 
     chain = chain.then(() => this.getPackageVersion());
     chain = chain.then(version => {
+      if (version == null) {
+        throw new ValidationError(
+          "ENOTSATISFIED",
+          dedent`
+            Requested package has no version: ${this.spec.name}
+          `
+        );
+      }
       this.spec.version = version;
     });
 
@@ -81,17 +89,24 @@ class AddCommand extends Command {
 
     this.logger.info("", `Adding ${this.spec.name} in ${numberOfPackages}`);
 
-    return this.makeChanges().then(() => {
-      const argv = Object.assign({}, this.options, {
-        args: [],
-        cwd: this.project.rootPath,
-        scope: this.packagesToChange.map(pkg => pkg.name),
-        // silence initial cli version logging, etc
-        composed: "add",
-      });
+    let chain = Promise.resolve();
 
-      return bootstrap(argv);
-    });
+    chain = chain.then(() => this.makeChanges());
+
+    if (this.options.bootstrap !== false) {
+      chain = chain.then(() => {
+        const argv = Object.assign({}, this.options, {
+          args: [],
+          cwd: this.project.rootPath,
+          // silence initial cli version logging, etc
+          composed: "add",
+        });
+
+        return bootstrap(argv);
+      });
+    }
+
+    return chain;
   }
 
   collectPackagesToChange() {
@@ -162,7 +177,7 @@ class AddCommand extends Command {
       registry: this.options.registry,
     });
 
-    return pacote.manifest(this.spec, opts).then(pkg => pkg.version);
+    return getManifest(this.spec, opts.snapshot).then(pkg => pkg.version);
   }
 
   packageSatisfied() {

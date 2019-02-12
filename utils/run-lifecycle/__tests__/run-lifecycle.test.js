@@ -2,36 +2,69 @@
 
 jest.mock("npm-lifecycle", () => jest.fn(() => Promise.resolve()));
 
+const log = require("npmlog");
 const loggingOutput = require("@lerna-test/logging-output");
-const npmLifecycle = require("npm-lifecycle");
+const runScript = require("npm-lifecycle");
 const npmConf = require("@lerna/npm-conf");
+const Package = require("@lerna/package");
 const runLifecycle = require("../run-lifecycle");
 
-describe("default export", () => {
-  it("calls npm-lifecycle with prepared arguments", async () => {
+describe("runLifecycle()", () => {
+  it("skips packages without scripts", async () => {
     const pkg = {
-      name: "test-name",
-      version: "1.0.0-test",
-      location: "test-location",
+      name: "no-scripts",
     };
+
+    await runLifecycle(pkg, "foo", new Map());
+
+    expect(runScript).not.toHaveBeenCalled();
+  });
+
+  it("skips packages without matching script", async () => {
+    const pkg = {
+      name: "missing-script",
+      scripts: {
+        test: "foo",
+      },
+    };
+
+    await runLifecycle(pkg, "bar", new Map());
+
+    expect(runScript).not.toHaveBeenCalled();
+  });
+
+  it("calls npm-lifecycle with prepared arguments", async () => {
+    const pkg = new Package(
+      {
+        name: "test-name",
+        version: "1.0.0-test",
+        scripts: {
+          preversion: "test",
+        },
+        engines: {
+          node: ">= 8.9.0",
+        },
+      },
+      "/test/location"
+    );
     const stage = "preversion";
-    const config = npmConf({ "custom-cli-flag": true });
+    const opts = npmConf({ "custom-cli-flag": true });
 
-    const result = await runLifecycle(pkg, stage, config);
+    await runLifecycle(pkg, stage, opts);
 
-    expect(result).toBe(pkg);
-    expect(npmLifecycle).toHaveBeenLastCalledWith(
+    expect(runScript).toHaveBeenLastCalledWith(
       expect.objectContaining({
         name: pkg.name,
         version: pkg.version,
-        location: pkg.location,
+        engines: {
+          node: ">= 8.9.0",
+        },
         _id: `${pkg.name}@${pkg.version}`,
       }),
       stage,
       pkg.location,
       expect.objectContaining({
         config: expect.objectContaining({
-          prefix: pkg.location,
           "custom-cli-flag": true,
         }),
         dir: pkg.location,
@@ -40,6 +73,93 @@ describe("default export", () => {
         unsafePerm: true,
       })
     );
+  });
+
+  it("camelCases dashed-options", async () => {
+    const pkg = {
+      name: "dashed-name",
+      version: "1.0.0-dashed",
+      location: "dashed-location",
+      scripts: {
+        "dashed-options": "test",
+      },
+    };
+    const dir = pkg.location;
+    const stage = "dashed-options";
+    const opts = new Map([
+      ["ignore-prepublish", true],
+      ["ignore-scripts", false],
+      ["node-options", "--a-thing"],
+      ["script-shell", "fish"],
+      ["scripts-prepend-node-path", true],
+      ["unsafe-perm", false],
+    ]);
+
+    await runLifecycle(pkg, stage, opts);
+
+    expect(runScript).toHaveBeenLastCalledWith(expect.objectContaining(pkg), stage, dir, {
+      config: expect.objectContaining({
+        "node-options": "--a-thing",
+        "script-shell": "fish",
+      }),
+      dir,
+      failOk: false,
+      log,
+      nodeOptions: "--a-thing",
+      scriptShell: "fish",
+      scriptsPrependNodePath: true,
+      unsafePerm: false,
+    });
+  });
+
+  it("ignores prepublish when configured", async () => {
+    const pkg = {
+      name: "ignore-prepublish",
+      scripts: {
+        prepublish: "test",
+      },
+    };
+    const stage = "prepublish";
+    const opts = new Map().set("ignore-prepublish", true);
+
+    await runLifecycle(pkg, stage, opts);
+
+    expect(runScript).not.toHaveBeenCalled();
+  });
+
+  it("ignores scripts when configured", async () => {
+    const pkg = {
+      name: "ignore-scripts",
+      scripts: {
+        ignored: "test",
+      },
+    };
+    const stage = "ignored";
+    const opts = new Map().set("ignore-scripts", true);
+
+    await runLifecycle(pkg, stage, opts);
+
+    expect(runScript).not.toHaveBeenCalled();
+  });
+
+  it("omits circular opts", async () => {
+    const pkg = {
+      name: "circular-name",
+      version: "1.0.0-circular",
+      location: "circular-location",
+      scripts: {
+        prepack: "test",
+      },
+    };
+    const stage = "prepack";
+    const opts = new Map();
+
+    await runLifecycle(pkg, stage, opts);
+
+    const callOpts = runScript.mock.calls.pop().pop();
+
+    expect(callOpts).not.toHaveProperty("config.log");
+    expect(callOpts).not.toHaveProperty("config.logstream");
   });
 });
 
@@ -55,10 +175,9 @@ describe("createRunner", () => {
     };
     const stage = "version";
 
-    const result = await runPackageLifecycle(pkg, stage);
+    await runPackageLifecycle(pkg, stage);
 
-    expect(result).toBe(pkg);
-    expect(npmLifecycle).toHaveBeenLastCalledWith(
+    expect(runScript).toHaveBeenLastCalledWith(
       expect.any(Object),
       stage,
       pkg.location,
@@ -78,7 +197,7 @@ describe("createRunner", () => {
     };
 
     await runPackageLifecycle(pkg, "prepare");
-    expect(npmLifecycle).not.toBeCalled();
+    expect(runScript).not.toHaveBeenCalled();
   });
 
   it("skips missing script", async () => {
@@ -90,11 +209,11 @@ describe("createRunner", () => {
     };
 
     await runPackageLifecycle(pkg, "prepare");
-    expect(npmLifecycle).not.toBeCalled();
+    expect(runScript).not.toHaveBeenCalled();
   });
 
   it("logs script error and re-throws", async () => {
-    npmLifecycle.mockImplementationOnce(({ scripts }, stage) => {
+    runScript.mockImplementationOnce(({ scripts }, stage) => {
       const err = new Error("boom");
 
       // https://git.io/fAE3f
@@ -124,7 +243,7 @@ describe("createRunner", () => {
   });
 
   it("defaults error exit code to 1", async () => {
-    npmLifecycle.mockImplementationOnce(({ scripts }, stage) => {
+    runScript.mockImplementationOnce(({ scripts }, stage) => {
       const err = new Error("kersplode");
 
       // errno only gets added when a proc closes, not from error

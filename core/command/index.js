@@ -21,7 +21,6 @@ class Command {
     log.pause();
     log.heading = "lerna";
 
-    this._argv = argv;
     log.silly("argv", argv);
 
     // "FooCommand" => "foo"
@@ -60,7 +59,7 @@ class Command {
         err => {
           if (err.pkg) {
             // Cleanly log specific package error details
-            logPackageError(err);
+            logPackageError(err, this.options.stream);
           } else if (err.name !== "ValidationError") {
             // npmlog does some funny stuff to the stack by default,
             // so pass it directly to avoid duplication.
@@ -90,10 +89,28 @@ class Command {
       delete argv.onRejected; // eslint-disable-line no-param-reassign
     }
 
-    // proxy "Promise" methods to "private" instance
-    this.then = (onResolved, onRejected) => runner.then(onResolved, onRejected);
-    /* istanbul ignore next */
-    this.catch = onRejected => runner.catch(onRejected);
+    // "hide" irrelevant argv keys from options
+    for (const key of ["cwd", "$0"]) {
+      Object.defineProperty(argv, key, { enumerable: false });
+    }
+
+    Object.defineProperty(this, "argv", {
+      value: Object.freeze(argv),
+    });
+
+    Object.defineProperty(this, "runner", {
+      value: runner,
+    });
+  }
+
+  // proxy "Promise" methods to "private" instance
+  then(onResolved, onRejected) {
+    return this.runner.then(onResolved, onRejected);
+  }
+
+  /* istanbul ignore next */
+  catch(onRejected) {
+    return this.runner.catch(onRejected);
   }
 
   get requiresGit() {
@@ -125,11 +142,13 @@ class Command {
       log.enableUnicode();
     }
 
-    this._env = {
-      ci,
-      progress,
-      loglevel,
-    };
+    Object.defineProperty(this, "envDefaults", {
+      value: {
+        ci,
+        progress,
+        loglevel,
+      },
+    });
   }
 
   configureOptions() {
@@ -142,13 +161,13 @@ class Command {
     this.options = _.defaults(
       {},
       // CLI flags, which if defined overrule subsequent values
-      this._argv,
+      this.argv,
       // Namespaced command options from `lerna.json`
       ...overrides,
       // Global options from `lerna.json`
       this.project.config,
       // Environmental defaults prepared in previous step
-      this._env
+      this.envDefaults
     );
   }
 
@@ -174,7 +193,9 @@ class Command {
     log.addLevel("success", 3001, { fg: "green", bold: true });
 
     // create logger that subclasses use
-    this.logger = log.newGroup(this.name);
+    Object.defineProperty(this, "logger", {
+      value: log.newGroup(this.name),
+    });
 
     // emit all buffered logs at configured level and higher
     log.resume();
@@ -182,8 +203,8 @@ class Command {
 
   enableProgressBar() {
     /* istanbul ignore next */
-    if (this.options.progress) {
-      this.logger.enableProgress();
+    if (this.options.progress !== false) {
+      log.enableProgress();
     }
   }
 
@@ -228,6 +249,10 @@ class Command {
     if (!this.composed && this.project.isIndependent()) {
       // composed commands have already logged the independent status
       log.info("versioning", "independent");
+    }
+
+    if (!this.composed && this.options.ci) {
+      log.info("ci", "enabled");
     }
 
     let chain = Promise.resolve();

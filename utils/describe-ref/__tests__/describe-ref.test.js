@@ -41,6 +41,16 @@ describe("describeRef()", () => {
       options
     );
   });
+
+  it("accepts includeMergedTags argument", async () => {
+    const includeMergedTags = true;
+
+    await describeRef({}, includeMergedTags);
+
+    const newArgs = [...DEFAULT_ARGS];
+    newArgs.pop();
+    expect(childProcess.exec).toHaveBeenLastCalledWith("git", newArgs, {});
+  });
 });
 
 describe("describeRef.sync()", () => {
@@ -137,6 +147,18 @@ describe("describeRef.parse()", () => {
       isDirty: true,
       refCount: "456",
       sha: "a1b2c3d",
+    });
+  });
+
+  it("should return metadata for tag names that are sha-like", () => {
+    const result = describeRef.parse("20190104-5-g6fb4e3293");
+
+    expect(result).toEqual({
+      isDirty: false,
+      lastTagName: "20190104",
+      lastVersion: "20190104",
+      refCount: "5",
+      sha: "6fb4e3293",
     });
   });
 });

@@ -67,7 +67,7 @@ class PackageGraph extends Map {
   constructor(packages, graphType = "allDependencies", forceLocal) {
     super(packages.map(pkg => [pkg.name, new PackageGraphNode(pkg)]));
 
-    if (packages.size !== this.size) {
+    if (packages.length !== this.size) {
       // weed out the duplicates
       const seen = new Map();
 
@@ -216,7 +216,7 @@ class PackageGraph extends Map {
 
         if (siblingDependents.has(currentName)) {
           // a transitive cycle
-          const cycleDependentName = Array.from(dependentNode.localDependencies).find(([key]) =>
+          const cycleDependentName = Array.from(dependentNode.localDependencies.keys()).find(key =>
             currentNode.localDependents.has(key)
           );
           const pathToCycle = step
